@@ -10,16 +10,20 @@ import {
   doc,
 } from "firebase/firestore";
 import { firestore } from "../../utils/firebase.mjs";
+import { useAuth } from "@/utils/AuthContext";
+import { query, where } from "firebase/firestore";
 
 interface Event {
   id: string; // Document ID
   Agenda: string;
   Name: string;
   Participants: string[];
-  Start: string; // Converted Firestore timestamp to string
+  Start: string;
+  OrganizerId: string;
 }
 
 export default function MeetingsPage() {
+  const { user, loading } = useAuth();
   const [events, setEvents] = useState<Event[]>([]);
 
   // Modal State
@@ -35,8 +39,15 @@ export default function MeetingsPage() {
   // Fetch meetings from Firestore
   useEffect(() => {
     const fetchItems = async () => {
+      if (!user) return; // Ensure the user is logged in
+
       try {
-        const querySnapshot = await getDocs(collection(firestore, "Event"));
+        const eventsQuery = query(
+          collection(firestore, "Event"),
+          where("OrganizerId", "==", user.uid) // Filter by OrganizerId
+        );
+
+        const querySnapshot = await getDocs(eventsQuery);
         const itemsArray = querySnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
@@ -49,7 +60,7 @@ export default function MeetingsPage() {
     };
 
     fetchItems();
-  }, []);
+  }, [user]);
 
   // Function to handle input change
   const handleChange = (
@@ -87,7 +98,7 @@ export default function MeetingsPage() {
         await updateDoc(docRef, {
           Name: newEvent.title,
           Agenda: newEvent.agenda,
-          Participants: newEvent.participants.split(",").map((p) => p.trim()), // Convert string to array
+          Participants: newEvent.participants.split(",").map((p) => p.trim()),
           Start: new Date(newEvent.time),
         });
 
@@ -111,8 +122,9 @@ export default function MeetingsPage() {
         const docRef = await addDoc(collection(firestore, "Event"), {
           Name: newEvent.title,
           Agenda: newEvent.agenda,
-          Participants: newEvent.participants.split(",").map((p) => p.trim()), // Convert string to array
+          Participants: newEvent.participants.split(",").map((p) => p.trim()),
           Start: new Date(newEvent.time),
+          OrganizerId: user?.uid,
         });
 
         setEvents([
@@ -123,6 +135,7 @@ export default function MeetingsPage() {
             Agenda: newEvent.agenda,
             Participants: newEvent.participants.split(",").map((p) => p.trim()),
             Start: new Date(newEvent.time).toLocaleString(),
+            OrganizerId: user?.uid,
           },
         ]);
       }
@@ -153,34 +166,28 @@ export default function MeetingsPage() {
     }
   };
 
-  // Function to format date-time for display
-  const formatDateTime = (isoDateTime: string) => {
-    const date = new Date(isoDateTime);
-    return date.toLocaleString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
-  };
-
   return (
     <div className="p-8">
       <h1 className="text-2xl font-bold text-gray-900 mb-4">📅 Meetings</h1>
 
-      {/* Add Meeting Button */}
-      <button
-        className="mb-4 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition"
-        onClick={() => {
-          setIsModalOpen(true);
-          setEditEventId(null);
-        }}
-      >
-        + Add Meeting
-      </button>
+      {/* Add and Arrange Meeting Buttons */}
+      <div className="flex space-x-4 mb-4">
+        <button
+          className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition"
+          onClick={() => {
+            setIsModalOpen(true);
+            setEditEventId(null);
+          }}
+        >
+          + Add Meeting
+        </button>
+        <button
+          className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition"
+          onClick={() => (window.location.href = "/meetings/ArrangeMeeting")}
+        >
+          Arrange Meeting
+        </button>
+      </div>
 
       {/* Meetings List */}
       <div className="grid grid-cols-2 gap-6">
@@ -188,9 +195,7 @@ export default function MeetingsPage() {
           <div key={event.id} className="bg-white p-6 rounded-xl shadow-md">
             <h2 className="text-lg font-semibold text-gray-900">
               {event.Name}{" "}
-              <span className="text-gray-500 text-sm">
-                {formatDateTime(event.Start)}
-              </span>
+              <span className="text-gray-500 text-sm">{event.Start}</span>
             </h2>
             <p className="text-gray-700 text-sm mt-1">
               Participants:{" "}
