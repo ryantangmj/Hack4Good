@@ -153,20 +153,6 @@ export default function MeetingsPage() {
     }
   };
 
-  // Function to format date-time for display
-  const formatDateTime = (isoDateTime: string) => {
-    const date = new Date(isoDateTime);
-    return date.toLocaleString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
-  };
-
   return (
     <div className="p-8">
       <h1 className="text-2xl font-bold text-gray-900 mb-4">📅 Meetings</h1>
@@ -188,9 +174,7 @@ export default function MeetingsPage() {
           <div key={event.id} className="bg-white p-6 rounded-xl shadow-md">
             <h2 className="text-lg font-semibold text-gray-900">
               {event.Name}{" "}
-              <span className="text-gray-500 text-sm">
-                {formatDateTime(event.Start)}
-              </span>
+              <span className="text-gray-500 text-sm">{event.Start}</span>
             </h2>
             <p className="text-gray-700 text-sm mt-1">
               Participants:{" "}
