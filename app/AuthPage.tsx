@@ -1,14 +1,19 @@
 "use client";
 
 import React, { useState } from "react";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+} from "firebase/auth";
 import { auth } from "../utils/firebase.mjs"; // Ensure your Firebase configuration is imported here
+import { collection, addDoc } from "firebase/firestore";
+import { firestore } from "../utils/firebase.mjs";
 
 const AuthPage = () => {
   const [isSignUp, setIsSignUp] = useState(false);
+  const [name, setName] = useState(""); // Name for Sign-Up
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [activePath, setActivePath] = useState("signin"); // Tracks which form is active
   const [error, setError] = useState("");
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -24,13 +29,27 @@ const AuthPage = () => {
     try {
       if (isSignUp) {
         // Sign up user
-        await createUserWithEmailAndPassword(auth, email, password);
+        const userCredential = await createUserWithEmailAndPassword(
+          auth,
+          email,
+          password
+        );
+
+        // Save user information in Firestore
+        const user = userCredential.user;
+        await addDoc(collection(firestore, "users"), {
+          name,
+          email: user.email,
+        });
+
         alert("Account created successfully!");
       } else {
         // Sign in user
         await signInWithEmailAndPassword(auth, email, password);
         alert("Signed in successfully!");
       }
+
+      setName("");
       setEmail("");
       setPassword("");
     } catch (err: any) {
@@ -42,19 +61,25 @@ const AuthPage = () => {
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100">
       <div className="bg-white p-8 rounded-lg shadow-lg w-96">
-        <h2 className="text-2xl font-bold mb-6 text-center">
-          {"Digital PA"}
-        </h2>
+        <h2 className="text-2xl font-bold mb-6 text-center">{"Digital PA"}</h2>
 
         {/* Error Message */}
         {error && (
-          <p className="text-red-500 text-sm mb-4 text-center">
-            {error}
-          </p>
+          <p className="text-red-500 text-sm mb-4 text-center">{error}</p>
         )}
 
         {/* Form */}
         <form onSubmit={handleAuth}>
+          {isSignUp && (
+            <input
+              type="text"
+              placeholder="Name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full border px-3 py-2 mb-4 rounded-md"
+              required
+            />
+          )}
           <input
             type="email"
             placeholder="Email"
@@ -86,7 +111,6 @@ const AuthPage = () => {
           <span
             onClick={() => {
               setIsSignUp(!isSignUp);
-              setActivePath(isSignUp ? "signin" : "signup");
               setError("");
             }}
             className="text-blue-500 cursor-pointer"

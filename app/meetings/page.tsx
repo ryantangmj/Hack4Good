@@ -87,7 +87,7 @@ export default function MeetingsPage() {
         await updateDoc(docRef, {
           Name: newEvent.title,
           Agenda: newEvent.agenda,
-          Participants: newEvent.participants.split(",").map((p) => p.trim()), // Convert string to array
+          Participants: newEvent.participants.split(",").map((p) => p.trim()),
           Start: new Date(newEvent.time),
         });
 
@@ -111,7 +111,7 @@ export default function MeetingsPage() {
         const docRef = await addDoc(collection(firestore, "Event"), {
           Name: newEvent.title,
           Agenda: newEvent.agenda,
-          Participants: newEvent.participants.split(",").map((p) => p.trim()), // Convert string to array
+          Participants: newEvent.participants.split(",").map((p) => p.trim()),
           Start: new Date(newEvent.time),
         });
 
@@ -171,16 +171,24 @@ export default function MeetingsPage() {
     <div className="p-8">
       <h1 className="text-2xl font-bold text-gray-900 mb-4">📅 Meetings</h1>
 
-      {/* Add Meeting Button */}
-      <button
-        className="mb-4 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition"
-        onClick={() => {
-          setIsModalOpen(true);
-          setEditEventId(null);
-        }}
-      >
-        + Add Meeting
-      </button>
+      {/* Add and Arrange Meeting Buttons */}
+      <div className="flex space-x-4 mb-4">
+        <button
+          className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition"
+          onClick={() => {
+            setIsModalOpen(true);
+            setEditEventId(null);
+          }}
+        >
+          + Add Meeting
+        </button>
+        <button
+          className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition"
+          onClick={() => (window.location.href = "/meetings/ArrangeMeeting")}
+        >
+          Arrange Meeting
+        </button>
+      </div>
 
       {/* Meetings List */}
       <div className="grid grid-cols-2 gap-6">
