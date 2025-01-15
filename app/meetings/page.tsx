@@ -1,225 +1,278 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import {
+  collection,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+} from "firebase/firestore";
+import { firestore } from "../../utils/firebase.mjs";
+
+interface Event {
+  id: string; // Document ID
+  Agenda: string;
+  Name: string;
+  Participants: string[];
+  Start: string; // Converted Firestore timestamp to string
+}
 
 export default function MeetingsPage() {
-	const [meetings, setMeetings] = useState([
-		{
-			id: 1,
-			title: "Strategic Planning",
-			time: "2025-01-15T10:00",
-			participants: ["Alice", "Bob", "Charlie"],
-			agenda: "Q1 Review • Goal Setting • Resource Planning",
-		},
-		{
-			id: 2,
-			title: "Project Kickoff",
-			time: "2025-01-20T14:00",
-			participants: ["David", "Emma", "Frank"],
-			agenda: "Project timeline • Assigning roles",
-		},
-	]);
+  const [events, setEvents] = useState<Event[]>([]);
 
-	// Modal State
-	const [isModalOpen, setIsModalOpen] = useState(false);
-	const [editMeetingId, setEditMeetingId] = useState<number | null>(null);
-	const [newMeeting, setNewMeeting] = useState({
-		title: "",
-		time: "",
-		participants: "",
-		agenda: "",
-	});
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editEventId, setEditEventId] = useState<string | null>(null);
+  const [newEvent, setNewEvent] = useState({
+    title: "",
+    time: "",
+    participants: "",
+    agenda: "",
+  });
 
-	// Function to handle input change
-	const handleChange = (
-		e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-	) => {
-		setNewMeeting({ ...newMeeting, [e.target.name]: e.target.value });
-	};
+  // Fetch meetings from Firestore
+  useEffect(() => {
+    const fetchItems = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(firestore, "Event"));
+        const itemsArray = querySnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          Start: doc.data().Start.toDate().toLocaleString(),
+        })) as Event[];
+        setEvents(itemsArray);
+      } catch (error) {
+        console.error("Error fetching items: ", error);
+      }
+    };
 
-	// Function to open the edit modal
-	const openEditModal = (meetingId: number) => {
-		const meetingToEdit = meetings.find((meeting) => meeting.id === meetingId);
-		if (meetingToEdit) {
-			setNewMeeting({
-				title: meetingToEdit.title,
-				time: meetingToEdit.time,
-				participants: meetingToEdit.participants.join(", "),
-				agenda: meetingToEdit.agenda,
-			});
-			setEditMeetingId(meetingId);
-			setIsModalOpen(true);
-		}
-	};
+    fetchItems();
+  }, []);
 
-	// Function to add or edit a meeting
-	const saveMeeting = () => {
-		if (!newMeeting.title || !newMeeting.time)
-			return alert("Please fill all fields!");
+  // Function to handle input change
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    setNewEvent({ ...newEvent, [e.target.name]: e.target.value });
+  };
 
-		if (editMeetingId !== null) {
-			// Editing an existing meeting
-			setMeetings((prevMeetings) =>
-				prevMeetings.map((meeting) =>
-					meeting.id === editMeetingId
-						? {
-								...meeting,
-								title: newMeeting.title,
-								time: newMeeting.time,
-								participants: newMeeting.participants
-									.split(",")
-									.map((p) => p.trim()),
-								agenda: newMeeting.agenda,
-						  }
-						: meeting
-				)
-			);
-		} else {
-			// Adding a new meeting
-			const meetingToAdd = {
-				id: meetings.length + 1,
-				title: newMeeting.title,
-				time: newMeeting.time,
-				participants: newMeeting.participants.split(",").map((p) => p.trim()),
-				agenda: newMeeting.agenda,
-			};
-			setMeetings([...meetings, meetingToAdd]);
-		}
+  // Function to open the edit modal
+  const openEditModal = (eventId: string) => {
+    const eventToEdit = events.find((event) => event.id === eventId);
+    if (eventToEdit) {
+      setNewEvent({
+        title: eventToEdit.Name,
+        time: eventToEdit.Start,
+        participants: eventToEdit.Participants.join(", "),
+        agenda: eventToEdit.Agenda,
+      });
+      setEditEventId(eventId);
+      setIsModalOpen(true);
+    }
+  };
 
-		setIsModalOpen(false); // Close modal after saving
-		setNewMeeting({ title: "", time: "", participants: "", agenda: "" }); // Reset form
-		setEditMeetingId(null);
-	};
+  // Save the new or edited meeting to Firestore
+  const saveEvent = async () => {
+    if (!newEvent.title || !newEvent.time) {
+      alert("Please fill all required fields!");
+      return;
+    }
 
-	// Function to delete a meeting
-	const deleteMeeting = (meetingId: number) => {
-		const confirmDelete = confirm(
-			"Are you sure you want to delete this meeting?"
-		);
-		if (confirmDelete) {
-			setMeetings(meetings.filter((meeting) => meeting.id !== meetingId));
-		}
-	};
+    try {
+      if (editEventId !== null) {
+        // Update existing meeting
+        const docRef = doc(firestore, "Event", editEventId);
+        await updateDoc(docRef, {
+          Name: newEvent.title,
+          Agenda: newEvent.agenda,
+          Participants: newEvent.participants.split(",").map((p) => p.trim()), // Convert string to array
+          Start: new Date(newEvent.time),
+        });
 
-	// Function to format date-time for display
-	const formatDateTime = (isoDateTime: string) => {
-		const date = new Date(isoDateTime);
-		return date.toLocaleString("en-US", {
-			weekday: "short",
-			month: "short",
-			day: "2-digit",
-			year: "numeric",
-			hour: "2-digit",
-			minute: "2-digit",
-			hour12: true,
-		});
-	};
+        setEvents(
+          events.map((event) =>
+            event.id === editEventId
+              ? {
+                  ...event,
+                  Name: newEvent.title,
+                  Agenda: newEvent.agenda,
+                  Participants: newEvent.participants
+                    .split(",")
+                    .map((p) => p.trim()),
+                  Start: new Date(newEvent.time).toLocaleString(),
+                }
+              : event
+          )
+        );
+      } else {
+        // Add new meeting
+        const docRef = await addDoc(collection(firestore, "Event"), {
+          Name: newEvent.title,
+          Agenda: newEvent.agenda,
+          Participants: newEvent.participants.split(",").map((p) => p.trim()), // Convert string to array
+          Start: new Date(newEvent.time),
+        });
 
-	return (
-		<div className="p-8">
-			<h1 className="text-2xl font-bold text-gray-900 mb-4">📅 Meetings</h1>
+        setEvents([
+          ...events,
+          {
+            id: docRef.id,
+            Name: newEvent.title,
+            Agenda: newEvent.agenda,
+            Participants: newEvent.participants.split(",").map((p) => p.trim()),
+            Start: new Date(newEvent.time).toLocaleString(),
+          },
+        ]);
+      }
 
-			{/* Add Meeting Button */}
-			<button
-				className="mb-4 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition"
-				onClick={() => {
-					setIsModalOpen(true);
-					setEditMeetingId(null);
-				}}
-			>
-				+ Add Meeting
-			</button>
+      alert("Meeting saved successfully!");
+      setIsModalOpen(false);
+      setNewEvent({ title: "", agenda: "", participants: "", time: "" });
+    } catch (error) {
+      console.error("Error saving meeting: ", error);
+      alert("Failed to save meeting!");
+    }
+  };
 
-			{/* Meetings List */}
-			<div className="grid grid-cols-2 gap-6">
-				{meetings.map((meeting) => (
-					<div key={meeting.id} className="bg-white p-6 rounded-xl shadow-md">
-						<h2 className="text-lg font-semibold text-gray-900">
-							{meeting.title}{" "}
-							<span className="text-gray-500 text-sm">
-								{formatDateTime(meeting.time)}
-							</span>
-						</h2>
-						<p className="text-gray-700 text-sm mt-1">
-							Participants: {meeting.participants.join(", ") || "TBA"}
-						</p>
-						<p className="text-gray-700 text-sm mt-1">
-							Agenda: {meeting.agenda}
-						</p>
+  // Function to delete a meeting
+  const deleteMeeting = async (meetingId: string) => {
+    const confirmDelete = confirm(
+      "Are you sure you want to delete this meeting?"
+    );
+    if (confirmDelete) {
+      try {
+        await deleteDoc(doc(firestore, "Event", meetingId));
+        setEvents(events.filter((event) => event.id !== meetingId));
+        alert("Meeting deleted successfully!");
+      } catch (error) {
+        console.error("Error deleting meeting: ", error);
+        alert("Failed to delete meeting!");
+      }
+    }
+  };
 
-						{/* Edit & Delete Buttons */}
-						<div className="flex mt-4 space-x-2">
-							<button
-								className="px-3 py-1 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 transition"
-								onClick={() => openEditModal(meeting.id)}
-							>
-								Edit
-							</button>
-							<button
-								className="px-3 py-1 bg-red-500 text-white rounded-md hover:bg-red-600 transition"
-								onClick={() => deleteMeeting(meeting.id)}
-							>
-								Delete
-							</button>
-						</div>
-					</div>
-				))}
-			</div>
+  // Function to format date-time for display
+  const formatDateTime = (isoDateTime: string) => {
+    const date = new Date(isoDateTime);
+    return date.toLocaleString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
 
-			{/* Meeting Modal */}
-			{isModalOpen && (
-				<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-					<div className="bg-white p-6 rounded-lg shadow-lg w-96">
-						<h2 className="text-xl font-semibold mb-4">
-							{editMeetingId !== null ? "Edit Meeting" : "Add Meeting"}
-						</h2>
-						<input
-							type="text"
-							name="title"
-							placeholder="Meeting Title"
-							value={newMeeting.title}
-							onChange={handleChange}
-							className="w-full border px-3 py-2 mb-2 rounded-md"
-						/>
-						<input
-							type="datetime-local"
-							name="time"
-							value={newMeeting.time}
-							onChange={handleChange}
-							className="w-full border px-3 py-2 mb-2 rounded-md"
-						/>
-						<input
-							type="text"
-							name="participants"
-							placeholder="Participants (comma-separated)"
-							value={newMeeting.participants}
-							onChange={handleChange}
-							className="w-full border px-3 py-2 mb-2 rounded-md"
-						/>
-						<textarea
-							name="agenda"
-							placeholder="Agenda"
-							value={newMeeting.agenda}
-							onChange={handleChange}
-							className="w-full border px-3 py-2 mb-2 rounded-md"
-						/>
-						<div className="flex justify-end space-x-2 mt-4">
-							<button
-								className="px-4 py-2 bg-gray-300 rounded-md"
-								onClick={() => setIsModalOpen(false)}
-							>
-								Cancel
-							</button>
-							<button
-								className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
-								onClick={saveMeeting}
-							>
-								{editMeetingId !== null ? "Save Changes" : "Add Meeting"}
-							</button>
-						</div>
-					</div>
-				</div>
-			)}
-		</div>
-	);
+  return (
+    <div className="p-8">
+      <h1 className="text-2xl font-bold text-gray-900 mb-4">📅 Meetings</h1>
+
+      {/* Add Meeting Button */}
+      <button
+        className="mb-4 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition"
+        onClick={() => {
+          setIsModalOpen(true);
+          setEditEventId(null);
+        }}
+      >
+        + Add Meeting
+      </button>
+
+      {/* Meetings List */}
+      <div className="grid grid-cols-2 gap-6">
+        {events.map((event) => (
+          <div key={event.id} className="bg-white p-6 rounded-xl shadow-md">
+            <h2 className="text-lg font-semibold text-gray-900">
+              {event.Name}{" "}
+              <span className="text-gray-500 text-sm">
+                {formatDateTime(event.Start)}
+              </span>
+            </h2>
+            <p className="text-gray-700 text-sm mt-1">
+              Participants:{" "}
+              {Array.isArray(event.Participants)
+                ? event.Participants.join(", ")
+                : "TBA"}
+            </p>
+            <p className="text-gray-700 text-sm mt-1">Agenda: {event.Agenda}</p>
+
+            {/* Edit & Delete Buttons */}
+            <div className="flex mt-4 space-x-2">
+              <button
+                className="px-3 py-1 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 transition"
+                onClick={() => openEditModal(event.id)}
+              >
+                Edit
+              </button>
+              <button
+                className="px-3 py-1 bg-red-500 text-white rounded-md hover:bg-red-600 transition"
+                onClick={() => deleteMeeting(event.id)}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Meeting Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-lg shadow-lg w-96">
+            <h2 className="text-xl font-semibold mb-4">
+              {editEventId !== null ? "Edit Meeting" : "Add Meeting"}
+            </h2>
+            <input
+              type="text"
+              name="title"
+              placeholder="Meeting Title"
+              value={newEvent.title}
+              onChange={handleChange}
+              className="w-full border px-3 py-2 mb-2 rounded-md"
+            />
+            <input
+              type="datetime-local"
+              name="time"
+              value={newEvent.time}
+              onChange={handleChange}
+              className="w-full border px-3 py-2 mb-2 rounded-md"
+            />
+            <input
+              type="text"
+              name="participants"
+              placeholder="Participants (comma-separated)"
+              value={newEvent.participants}
+              onChange={handleChange}
+              className="w-full border px-3 py-2 mb-2 rounded-md"
+            />
+            <textarea
+              name="agenda"
+              placeholder="Agenda"
+              value={newEvent.agenda}
+              onChange={handleChange}
+              className="w-full border px-3 py-2 mb-2 rounded-md"
+            />
+            <div className="flex justify-end space-x-2 mt-4">
+              <button
+                className="px-4 py-2 bg-gray-300 rounded-md"
+                onClick={() => setIsModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+                onClick={saveEvent}
+              >
+                {editEventId !== null ? "Save Changes" : "Add Meeting"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
