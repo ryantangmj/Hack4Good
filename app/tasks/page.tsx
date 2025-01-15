@@ -10,6 +10,7 @@ import {
   doc,
 } from "firebase/firestore";
 import { firestore } from "../../utils/firebase.mjs";
+import { useAuth } from "@/utils/AuthContext";
 
 interface Task {
   id: string; // Document ID
@@ -17,9 +18,11 @@ interface Task {
   Title: string;
   Due: string; // Converted Firestore timestamp to string
   Priority: string;
+  OrganizerId: string;
 }
 
 export default function TasksPage() {
+  const { user, loading } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
 
   // Modal State
@@ -43,6 +46,7 @@ export default function TasksPage() {
           Due: doc.data().Due.toDate().toLocaleString(), // Convert Firestore timestamp to ISO string
         })) as Task[];
         setTasks(tasksArray);
+        console.log(user?.uid);
       } catch (error) {
         console.error("Error fetching tasks: ", error);
       }
@@ -111,6 +115,7 @@ export default function TasksPage() {
           Due: new Date(newTask.due),
           Dependencies: newTask.dependencies,
           Priority: newTask.priority,
+          OrganizerId: user?.uid,
         });
 
         setTasks([
@@ -121,6 +126,7 @@ export default function TasksPage() {
             Due: newTask.due,
             Dependencies: newTask.dependencies,
             Priority: newTask.priority,
+            OrganizerId: user?.uid,
           },
         ]);
       }

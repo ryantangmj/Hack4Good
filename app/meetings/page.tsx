@@ -10,16 +10,19 @@ import {
   doc,
 } from "firebase/firestore";
 import { firestore } from "../../utils/firebase.mjs";
+import { useAuth } from "@/utils/AuthContext";
 
 interface Event {
   id: string; // Document ID
   Agenda: string;
   Name: string;
   Participants: string[];
-  Start: string; // Converted Firestore timestamp to string
+  Start: string;
+  OrganizerId: string;
 }
 
 export default function MeetingsPage() {
+  const { user, loading } = useAuth();
   const [events, setEvents] = useState<Event[]>([]);
 
   // Modal State
@@ -113,6 +116,7 @@ export default function MeetingsPage() {
           Agenda: newEvent.agenda,
           Participants: newEvent.participants.split(",").map((p) => p.trim()), // Convert string to array
           Start: new Date(newEvent.time),
+          OrganizerId: user?.uid,
         });
 
         setEvents([
@@ -123,6 +127,7 @@ export default function MeetingsPage() {
             Agenda: newEvent.agenda,
             Participants: newEvent.participants.split(",").map((p) => p.trim()),
             Start: new Date(newEvent.time).toLocaleString(),
+            OrganizerId: user?.uid,
           },
         ]);
       }
