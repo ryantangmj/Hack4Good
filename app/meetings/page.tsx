@@ -11,6 +11,7 @@ import {
 } from "firebase/firestore";
 import { firestore } from "../../utils/firebase.mjs";
 import { useAuth } from "@/utils/AuthContext";
+import { query, where } from "firebase/firestore";
 
 interface Event {
   id: string; // Document ID
@@ -38,8 +39,15 @@ export default function MeetingsPage() {
   // Fetch meetings from Firestore
   useEffect(() => {
     const fetchItems = async () => {
+      if (!user) return; // Ensure the user is logged in
+
       try {
-        const querySnapshot = await getDocs(collection(firestore, "Event"));
+        const eventsQuery = query(
+          collection(firestore, "Event"),
+          where("OrganizerId", "==", user.uid) // Filter by OrganizerId
+        );
+
+        const querySnapshot = await getDocs(eventsQuery);
         const itemsArray = querySnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
@@ -52,7 +60,7 @@ export default function MeetingsPage() {
     };
 
     fetchItems();
-  }, []);
+  }, [user]);
 
   // Function to handle input change
   const handleChange = (

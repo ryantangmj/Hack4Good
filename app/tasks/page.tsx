@@ -10,6 +10,7 @@ import {
   doc,
 } from "firebase/firestore";
 import { firestore } from "../../utils/firebase.mjs";
+import { query, where } from "firebase/firestore";
 import { useAuth } from "@/utils/AuthContext";
 
 interface Task {
@@ -38,22 +39,30 @@ export default function TasksPage() {
   // Fetch tasks from Firestore
   useEffect(() => {
     const fetchTasks = async () => {
+      if (!user) return; // Ensure the user is logged in
+
       try {
-        const querySnapshot = await getDocs(collection(firestore, "Task"));
+        // Query Firestore for tasks where OrganizerId matches the logged-in user's UID
+        const tasksQuery = query(
+          collection(firestore, "Task"),
+          where("OrganizerId", "==", user.uid)
+        );
+
+        const querySnapshot = await getDocs(tasksQuery);
         const tasksArray = querySnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
           Due: doc.data().Due.toDate().toLocaleString(), // Convert Firestore timestamp to ISO string
         })) as Task[];
+
         setTasks(tasksArray);
-        console.log(user?.uid);
       } catch (error) {
         console.error("Error fetching tasks: ", error);
       }
     };
 
     fetchTasks();
-  }, []);
+  }, [user]);
 
   // Function to handle input change
   const handleChange = (
