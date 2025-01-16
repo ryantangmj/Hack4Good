@@ -158,16 +158,25 @@ export default function MeetingsPage() {
     <div className="p-8">
       {/* Header */}
       <h1 className="text-2xl font-bold text-gray-900 mb-4">📅 My Meetings</h1>
-      {/* Add Meeting Button */}
-      <button
-        className="mb-4 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition"
-        onClick={() => {
-          setIsModalOpen(true);
-          setEditMeetingId(null);
-        }}
-      >
-        + Add Meeting
-      </button>
+
+      {/* Add Meeting & Arrange Meeting Buttons */}
+      <div className="mb-4 flex space-x-4">
+        <button
+          className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition"
+          onClick={() => {
+            setIsModalOpen(true);
+            setEditMeetingId(null);
+          }}
+        >
+          + Add Meeting
+        </button>
+        <button
+          className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition"
+          onClick={() => router.push("meetings/ArrangeMeeting")}
+        >
+          Arrange Meeting
+        </button>
+      </div>
 
       {/* Meetings List */}
       {loading ? (
