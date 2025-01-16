@@ -8,9 +8,9 @@ import {
 	FaRobot,
 	FaEnvelope,
 	FaHome,
-	FaSignOutAlt,
+	FaBell,
 } from "react-icons/fa";
-import { signOut, onAuthStateChanged, User } from "firebase/auth";
+import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../utils/firebase.mjs";
 
 const Sidebar = () => {
@@ -32,17 +32,8 @@ const Sidebar = () => {
 		{ name: "Tasks", icon: FaTasks, path: "/tasks" },
 		{ name: "Email Analytics", icon: FaEnvelope, path: "/email-analytics" },
 		{ name: "AI Assistant", icon: FaRobot, path: "/chat" },
+		{ name: "Invites", icon: FaBell, path: "/invites" },
 	];
-
-	const handleLogout = async () => {
-		try {
-			await signOut(auth);
-			alert("Successfully logged out!");
-			window.location.href = "/"; // Redirect to the login page
-		} catch (error) {
-			console.error("Error during logout: ", error);
-		}
-	};
 
 	// Show nothing if the user is not logged in
 	if (!user) {
@@ -54,8 +45,6 @@ const Sidebar = () => {
 			{/* Header Section */}
 			<div>
 				<h1 className="text-2xl font-bold text-gray-900">Digital PA</h1>
-				<p className="text-sm text-gray-600 mt-1">Productivity Score</p>
-				<p className="text-2xl font-bold text-blue-600">92%</p>
 			</div>
 
 			{/* Menu Items */}
@@ -78,17 +67,6 @@ const Sidebar = () => {
 					</li>
 				))}
 			</ul>
-
-			{/* Logout Button */}
-			<div className="border-t pt-4">
-				<button
-					onClick={handleLogout}
-					className="w-full flex items-center px-4 py-3 space-x-3 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
-				>
-					<FaSignOutAlt className="w-5 h-5" />
-					<span>Log Out</span>
-				</button>
-			</div>
 		</aside>
 	);
 };
