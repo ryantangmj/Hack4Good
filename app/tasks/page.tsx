@@ -1,273 +1,218 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import AuthGuard from "../../components/AuthGuard";
+import { db, auth } from "../../firebaseConfig";
 import {
-  collection,
-  getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
+	collection,
+	addDoc,
+	getDocs,
+	updateDoc,
+	doc,
+	where,
+	query,
 } from "firebase/firestore";
-import { firestore } from "../../utils/firebase.mjs";
-import { query, where } from "firebase/firestore";
-import { useAuth } from "@/utils/AuthContext";
+import { onAuthStateChanged } from "firebase/auth";
 
 interface Task {
-  id: string; // Document ID
-  Dependencies: string;
-  Title: string;
-  Due: string; // Converted Firestore timestamp to string
-  Priority: string;
-  OrganizerId: string;
+	id: string;
+	title: string;
+	priority: string;
+	completed: boolean;
+	dueDate: string; // Added due date field
+	userId: string;
 }
 
 export default function TasksPage() {
-  const { user, loading } = useAuth();
-  const [tasks, setTasks] = useState<Task[]>([]);
+	const [tasks, setTasks] = useState<Task[]>([]);
+	const [newTask, setNewTask] = useState({
+		title: "",
+		priority: "Medium",
+		dueDate: "",
+	});
+	const [loading, setLoading] = useState(false);
+	const [user, setUser] = useState<any>(null);
 
-  // Modal State
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editTaskId, setEditTaskId] = useState<string | null>(null);
-  const [newTask, setNewTask] = useState({
-    title: "",
-    due: "",
-    dependencies: "",
-    priority: "",
-  });
+	// Fetch tasks from Firestore
+	const fetchTasks = async (uid: string) => {
+		try {
+			setLoading(true);
+			const tasksRef = collection(db, "tasks");
+			const q = query(tasksRef, where("userId", "==", uid));
+			const snapshot = await getDocs(q);
+			const tasksList = snapshot.docs.map((doc) => ({
+				id: doc.id,
+				...doc.data(),
+			})) as Task[];
+			setTasks(tasksList);
+		} catch (error) {
+			console.error("Error fetching tasks:", error);
+		} finally {
+			setLoading(false);
+		}
+	};
 
-  // Fetch tasks from Firestore
-  useEffect(() => {
-    const fetchTasks = async () => {
-      if (!user) return; // Ensure the user is logged in
+	// Monitor authentication state
+	useEffect(() => {
+		const unsubscribe = onAuthStateChanged(auth, (user) => {
+			if (user) {
+				setUser(user);
+				fetchTasks(user.uid);
+			}
+		});
+		return () => unsubscribe();
+	}, []);
 
-      try {
-        // Query Firestore for tasks where OrganizerId matches the logged-in user's UID
-        const tasksQuery = query(
-          collection(firestore, "Task"),
-          where("OrganizerId", "==", user.uid)
-        );
+	// Toggle task completion and update Firestore
+	const toggleTaskCompletion = async (taskId: string) => {
+		try {
+			const task = tasks.find((t) => t.id === taskId);
+			if (!task) return;
 
-        const querySnapshot = await getDocs(tasksQuery);
-        const tasksArray = querySnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          Due: doc.data().Due.toDate().toLocaleString(), // Convert Firestore timestamp to ISO string
-        })) as Task[];
+			const taskRef = doc(db, "tasks", taskId);
+			await updateDoc(taskRef, { completed: !task.completed });
 
-        setTasks(tasksArray);
-      } catch (error) {
-        console.error("Error fetching tasks: ", error);
-      }
-    };
+			setTasks((prev) =>
+				prev.map((t) =>
+					t.id === taskId ? { ...t, completed: !t.completed } : t
+				)
+			);
+		} catch (error) {
+			console.error("Error updating task:", error);
+		}
+	};
 
-    fetchTasks();
-  }, [user]);
+	// Handle adding a new task
+	const addTask = async () => {
+		if (!newTask.title.trim() || !newTask.dueDate.trim()) {
+			alert("Task title and due date cannot be empty.");
+			return;
+		}
+		if (!user) {
+			alert("You must be logged in to add a task.");
+			return;
+		}
 
-  // Function to handle input change
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    setNewTask({ ...newTask, [e.target.name]: e.target.value });
-  };
+		try {
+			const taskRef = collection(db, "tasks");
+			const docRef = await addDoc(taskRef, {
+				title: newTask.title,
+				priority: newTask.priority,
+				completed: false,
+				dueDate: newTask.dueDate,
+				userId: user.uid,
+			});
 
-  // Function to open the edit modal
-  const openEditModal = (taskId: string) => {
-    const taskToEdit = tasks.find((task) => task.id === taskId);
-    if (taskToEdit) {
-      setNewTask({
-        title: taskToEdit.Title,
-        due: taskToEdit.Due,
-        dependencies: taskToEdit.Dependencies,
-        priority: taskToEdit.Priority,
-      });
-      setEditTaskId(taskId);
-      setIsModalOpen(true);
-    }
-  };
+			setTasks((prev) => [
+				...prev,
+				{ id: docRef.id, ...newTask, completed: false, userId: user.uid },
+			]);
+			setNewTask({ title: "", priority: "Medium", dueDate: "" });
+		} catch (error) {
+			console.error("Error adding task:", error);
+		}
+	};
 
-  // Save the new or edited task to Firestore
-  const saveTask = async () => {
-    if (!newTask.title || !newTask.due) {
-      alert("Please fill all required fields!");
-      return;
-    }
+	return (
+		<AuthGuard>
+			<div className="p-8">
+				<h1 className="text-2xl font-bold text-gray-900 mb-4">✅ Tasks</h1>
 
-    try {
-      if (editTaskId !== null) {
-        // Update existing task
-        const docRef = doc(firestore, "Task", editTaskId);
-        await updateDoc(docRef, {
-          Title: newTask.title,
-          Due: new Date(newTask.due),
-          Dependencies: newTask.dependencies,
-          Priority: newTask.priority,
-        });
+				{/* Task Input */}
+				<div className="mb-4 flex space-x-2">
+					<input
+						type="text"
+						placeholder="New Task"
+						value={newTask.title}
+						onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+						className="border px-3 py-2 rounded-md w-full"
+					/>
+					<select
+						value={newTask.priority}
+						onChange={(e) =>
+							setNewTask({ ...newTask, priority: e.target.value })
+						}
+						className="border px-3 py-2 rounded-md"
+					>
+						<option value="High">High</option>
+						<option value="Medium">Medium</option>
+						<option value="Low">Low</option>
+					</select>
+					<input
+						type="date"
+						value={newTask.dueDate}
+						onChange={(e) =>
+							setNewTask({ ...newTask, dueDate: e.target.value })
+						}
+						className="border px-3 py-2 rounded-md"
+					/>
+					<button
+						onClick={addTask}
+						className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+					>
+						Add
+					</button>
+				</div>
 
-        setTasks(
-          tasks.map((task) =>
-            task.id === editTaskId
-              ? {
-                  ...task,
-                  Title: newTask.title,
-                  Due: newTask.due,
-                  Dependencies: newTask.dependencies,
-                  Priority: newTask.priority,
-                }
-              : task
-          )
-        );
-      } else {
-        // Add new task
-        const docRef = await addDoc(collection(firestore, "Task"), {
-          Title: newTask.title,
-          Due: new Date(newTask.due),
-          Dependencies: newTask.dependencies,
-          Priority: newTask.priority,
-          OrganizerId: user?.uid,
-        });
+				{/* Task List */}
+				{loading ? (
+					<p className="text-gray-600">Loading tasks...</p>
+				) : (
+					<div className="space-y-4">
+						{tasks.length === 0 ? (
+							<p className="text-gray-500">No tasks found.</p>
+						) : (
+							tasks.map((task) => (
+								<div
+									key={task.id}
+									className={`p-4 rounded-lg shadow-md ${
+										task.completed ? "bg-gray-200" : "bg-white"
+									}`}
+								>
+									<div className="flex justify-between items-center">
+										<div>
+											<h2
+												className={`text-lg font-semibold ${
+													task.completed
+														? "line-through text-gray-500"
+														: "text-gray-900"
+												}`}
+											>
+												{task.title}
+											</h2>
+											<span
+												className={`px-2 py-1 rounded-md text-xs ${
+													task.priority === "High"
+														? "bg-red-100 text-red-600"
+														: task.priority === "Medium"
+														? "bg-yellow-100 text-yellow-600"
+														: "bg-green-100 text-green-600"
+												}`}
+											>
+												{task.priority}
+											</span>
+											<p className="text-sm text-gray-600 mt-1">
+												Due: {new Date(task.dueDate).toLocaleDateString()}
+											</p>
+										</div>
 
-        setTasks([
-          ...tasks,
-          {
-            id: docRef.id,
-            Title: newTask.title,
-            Due: newTask.due,
-            Dependencies: newTask.dependencies,
-            Priority: newTask.priority,
-            OrganizerId: user?.uid,
-          },
-        ]);
-      }
-
-      alert("Task saved successfully!");
-      setIsModalOpen(false);
-      setNewTask({ title: "", due: "", dependencies: "", priority: "" });
-    } catch (error) {
-      console.error("Error saving task: ", error);
-      alert("Failed to save task!");
-    }
-  };
-
-  // Function to delete a task
-  const deleteTask = async (taskId: string) => {
-    const confirmDelete = confirm("Are you sure you want to delete this task?");
-    if (confirmDelete) {
-      try {
-        await deleteDoc(doc(firestore, "Task", taskId));
-        setTasks(tasks.filter((task) => task.id !== taskId));
-        alert("Task deleted successfully!");
-      } catch (error) {
-        console.error("Error deleting task: ", error);
-        alert("Failed to delete task!");
-      }
-    }
-  };
-
-  return (
-    <div className="p-8">
-      <h1 className="text-2xl font-bold text-gray-900 mb-4">✅ Tasks</h1>
-
-      {/* Add Task Button */}
-      <button
-        className="mb-4 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition"
-        onClick={() => {
-          setIsModalOpen(true);
-          setEditTaskId(null);
-        }}
-      >
-        + Add Task
-      </button>
-
-      {/* Tasks List */}
-      <div className="grid grid-cols-2 gap-6">
-        {tasks.map((task) => (
-          <div key={task.id} className="bg-white p-6 rounded-xl shadow-md">
-            <h2 className="text-lg font-semibold text-gray-900">
-              {task.Title}{" "}
-              <span className="text-gray-500 text-sm">{task.Due}</span>
-            </h2>
-            <p className="text-gray-700 text-sm mt-1">
-              Dependencies: {task.Dependencies || "None"}
-            </p>
-            <p className="text-gray-700 text-sm mt-1">
-              Priority: {task.Priority || "Normal"}
-            </p>
-
-            {/* Edit & Delete Buttons */}
-            <div className="flex mt-4 space-x-2">
-              <button
-                className="px-3 py-1 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 transition"
-                onClick={() => openEditModal(task.id)}
-              >
-                Edit
-              </button>
-              <button
-                className="px-3 py-1 bg-red-500 text-white rounded-md hover:bg-red-600 transition"
-                onClick={() => deleteTask(task.id)}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Task Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white p-6 rounded-lg shadow-lg w-96">
-            <h2 className="text-xl font-semibold mb-4">
-              {editTaskId !== null ? "Edit Task" : "Add Task"}
-            </h2>
-            <input
-              type="text"
-              name="title"
-              placeholder="Task Title"
-              value={newTask.title}
-              onChange={handleChange}
-              className="w-full border px-3 py-2 mb-2 rounded-md"
-            />
-            <input
-              type="datetime-local"
-              name="due"
-              value={newTask.due}
-              onChange={handleChange}
-              className="w-full border px-3 py-2 mb-2 rounded-md"
-            />
-            <input
-              type="text"
-              name="dependencies"
-              placeholder="Dependencies"
-              value={newTask.dependencies}
-              onChange={handleChange}
-              className="w-full border px-3 py-2 mb-2 rounded-md"
-            />
-            <input
-              type="text"
-              name="priority"
-              placeholder="Priority"
-              value={newTask.priority}
-              onChange={handleChange}
-              className="w-full border px-3 py-2 mb-2 rounded-md"
-            />
-            <div className="flex justify-end space-x-2 mt-4">
-              <button
-                className="px-4 py-2 bg-gray-300 rounded-md"
-                onClick={() => setIsModalOpen(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
-                onClick={saveTask}
-              >
-                {editTaskId !== null ? "Save Changes" : "Add Task"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+										<button
+											className={`px-3 py-1 rounded-md ${
+												task.completed
+													? "bg-gray-500 text-white"
+													: "bg-blue-500 text-white"
+											}`}
+											onClick={() => toggleTaskCompletion(task.id)}
+										>
+											{task.completed ? "Undo" : "Complete"}
+										</button>
+									</div>
+								</div>
+							))
+						)}
+					</div>
+				)}
+			</div>
+		</AuthGuard>
+	);
 }
