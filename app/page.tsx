@@ -1,15 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, getDocs, addDoc } from "firebase/firestore";
-import { firestore } from "../utils/firebase.mjs";
-import { onAuthStateChanged, User } from "firebase/auth";
-import { auth } from "../utils/firebase.mjs";
-import AuthPage from "./AuthPage";
-import { db } from "../firebaseConfig"; // Ensure correct Firebase import
+import { collection, getDocs, query, where } from "firebase/firestore";
+import { db } from "../firebaseConfig";
 import { FaCalendarAlt, FaTasks, FaInbox, FaRobot } from "react-icons/fa";
 import Link from "next/link";
 import AuthGuard from "../components/AuthGuard";
+import { useAuth } from "@/utils/AuthContext";
 
 // Define types for the data coming from Firestore
 interface Meeting {
@@ -44,6 +41,7 @@ interface Task {
 }
 
 export default function Dashboard() {
+  const { user } = useAuth();
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [emails, setEmails] = useState<Email[]>([]);
@@ -51,13 +49,46 @@ export default function Dashboard() {
   // Fetch meetings, tasks, and email summaries
   useEffect(() => {
     const fetchMeetings = async () => {
-      const snapshot = await getDocs(collection(db, "meetings"));
-      setMeetings(
-        snapshot.docs.map((doc) => ({
+      try {
+        if (!user?.uid || !user?.email) return;
+
+        const meetingsRef = collection(db, "meetings");
+
+        // Get meetings where user is organizer or participant
+        const [organizerSnapshot, participantSnapshot] = await Promise.all([
+          getDocs(query(meetingsRef, where("userId", "==", user.uid))),
+          getDocs(
+            query(
+              meetingsRef,
+              where("participants", "array-contains", user.email)
+            )
+          ),
+        ]);
+
+        const organizerMeetings = organizerSnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
-        })) as Meeting[] // Type assertion here to ensure meetings are typed as Meeting[]
-      );
+          isOrganizer: true,
+        }));
+
+        const participantMeetings = participantSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          isOrganizer: false,
+        }));
+
+        // Combine and sort meetings by date
+        const allMeetings = [...organizerMeetings, ...participantMeetings]
+          .sort(
+            (a, b) => new Date(a.time).getTime() - new Date(b.time).getTime()
+          )
+          // Filter out past meetings
+          .filter((meeting) => new Date(meeting.time) >= new Date());
+
+        setMeetings(allMeetings);
+      } catch (error) {
+        console.error("Error fetching meetings:", error);
+      }
     };
 
     const fetchTasks = async () => {
