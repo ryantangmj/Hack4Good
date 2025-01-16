@@ -1,22 +1,27 @@
 // app/api/chat/route.ts
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
-import { format, addDays } from 'date-fns';
+import { format, addDays, parseISO, set } from 'date-fns';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-const TODAY = format(new Date(), 'yyyy-MM-dd');
+const TODAY = format(new Date(), "yyyy-MM-dd'T'HH:mm");
 
 const SYSTEM_PROMPT = `You are a task management assistant. Keep responses brief and focused.
 
-Today's date is ${TODAY}.
+Today's date and time is ${TODAY}.
 
 For task creation:
-1. Extract title, priority (High/Medium/Low), and due date
-2. Convert relative dates to YYYY-MM-DD format
-3. Respond in this exact format:
+1. Extract title, priority (High/Medium/Low), and due date/time
+2. Convert relative dates and times to YYYY-MM-DDTHH:mm format (24-hour format)
+3. Examples of date/time handling:
+   - "tomorrow at 3pm" → "${format(set(addDays(new Date(), 1), { hours: 15, minutes: 0 }), "yyyy-MM-dd'T'HH:mm")}"
+   - "next Friday at 2:30 pm" → Convert to appropriate YYYY-MM-DDTHH:mm
+   - If no specific time is mentioned, use 23:59 as the default time
+
+4. Respond in this exact format:
 
 Brief confirmation message
 __JSON_DATA__
@@ -25,7 +30,7 @@ __JSON_DATA__
   "task": {
     "title": "task title",
     "priority": "priority level",
-    "dueDate": "YYYY-MM-DD"
+    "dueDate": "YYYY-MM-DDTHH:mm"  // Will be converted to Timestamp
   }
 }
 
@@ -42,7 +47,7 @@ export async function POST(request: Request) {
       system: SYSTEM_PROMPT,
       messages: [{
         role: 'user',
-        content: `User ID: ${userId}\nMessage: ${message}\nToday: ${TODAY}`
+        content: `User ID: ${userId}\nMessage: ${message}\nCurrent datetime: ${TODAY}`
       }]
     });
 
@@ -59,6 +64,14 @@ export async function POST(request: Request) {
         const jsonStr = parts[1].trim();
         const taskData = JSON.parse(jsonStr);
         
+        // Validate the datetime format
+        if (taskData.task?.dueDate) {
+          const parsedDate = parseISO(taskData.task.dueDate);
+          if (!isNaN(parsedDate.getTime())) {
+            taskData.task.dueDate = format(parsedDate, "yyyy-MM-dd'T'HH:mm");
+          }
+        }
+
         return NextResponse.json({
           reply: conversationalPart,
           taskData,

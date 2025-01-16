@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { FaPaperPlane } from "react-icons/fa";
-import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
+import { collection, addDoc } from "firebase/firestore";
 import { db, auth } from "../../firebaseConfig";
 import AuthGuard from "../../components/AuthGuard";
 import { onAuthStateChanged } from "firebase/auth";
+import { Timestamp } from "firebase/firestore";
+import { format } from 'date-fns';
 
 interface Message {
   role: string;
@@ -17,7 +19,7 @@ interface TaskData {
   task: {
     title: string;
     priority: string;
-    dueDate: string;
+    dueDate: string;  // ISO string format
   };
 }
 
@@ -37,19 +39,22 @@ export default function ChatPage() {
   const createTask = async (taskData: TaskData) => {
     try {
       const taskRef = collection(db, "tasks");
+      const dueDate = new Date(taskData.task.dueDate);
+      
       await addDoc(taskRef, {
-        ...taskData.task,
+        title: taskData.task.title,
+        priority: taskData.task.priority,
         completed: false,
+        dueDate: Timestamp.fromDate(dueDate),
         userId: user.uid,
       });
 
-      // Confirm task creation to user
+      // Show success message with formatted date/time
       setMessages(prev => [...prev, {
         role: "ai",
-        text: "✅ Task created successfully! You can view it in the Tasks page."
+        text: `✅ Task created successfully for ${format(dueDate, "MMM d, yyyy 'at' h:mm a")}! You can view it in the Tasks page.`
       }]);
 
-      // Clear pending task
       setPendingTask(null);
     } catch (error) {
       console.error("Error creating task:", error);
@@ -77,12 +82,10 @@ export default function ChatPage() {
   const sendMessage = async () => {
     if (!input.trim() || !user) return;
 
-    // Add user message to chat
     const newMessage = { role: "user", text: input };
     setMessages(prev => [...prev, newMessage]);
 
     try {
-      // Send request to AI backend
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
@@ -96,16 +99,15 @@ export default function ChatPage() {
 
       const data = await response.json();
 
-      // Add AI response to chat
       setMessages(prev => [...prev, { role: "ai", text: data.reply }]);
 
-      // If the response includes task data, set it as pending
       if (data.taskData?.action === 'create_task') {
         setPendingTask(data.taskData);
-        // Add confirmation prompt
+        // Format the date nicely in the confirmation message
+        const dueDate = new Date(data.taskData.task.dueDate);
         setMessages(prev => [...prev, {
           role: "ai",
-          text: "Would you like me to create this task? (Click Confirm or Cancel below)"
+          text: `Would you like me to create this task for ${format(dueDate, "MMM d, yyyy 'at' h:mm a")}? (Click Confirm or Cancel below)`
         }]);
       }
     } catch (error) {
@@ -116,7 +118,7 @@ export default function ChatPage() {
       }]);
     }
 
-    setInput(""); // Clear input after sending
+    setInput("");
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -128,20 +130,18 @@ export default function ChatPage() {
 
   return (
     <AuthGuard>
-      <div className="flex flex-col h-[calc(100vh-64px)]"> {/* Adjusted height */}
-        {/* Header */}
+      <div className="flex flex-col h-[calc(100vh-64px)]">
         <div className="bg-white shadow-sm border-b">
           <div className="max-w-7xl mx-auto px-4 py-3">
             <h1 className="text-xl font-semibold flex items-center gap-2">
               🤖 AI Task Assistant
             </h1>
             <p className="text-sm text-gray-600 mt-1">
-              Try saying: "Create a high priority task to review project docs due next Friday"
+              Try saying: "Create a high priority task to review project docs tomorrow at 3pm"
             </p>
           </div>
         </div>
 
-        {/* Chat Area */}
         <div className="flex-1 bg-gray-50 overflow-y-auto px-4 py-6">
           <div className="max-w-3xl mx-auto space-y-4">
             {messages.map((msg, index) => (
@@ -161,7 +161,6 @@ export default function ChatPage() {
               </div>
             ))}
             
-            {/* Task Confirmation Buttons */}
             {pendingTask && (
               <div className="flex justify-center gap-3 my-4">
                 <button
@@ -181,7 +180,6 @@ export default function ChatPage() {
           </div>
         </div>
 
-        {/* Input Area */}
         <div className="bg-white border-t px-4 py-4">
           <div className="max-w-3xl mx-auto flex gap-2">
             <input
