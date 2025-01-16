@@ -161,7 +161,7 @@ export default function TasksPage() {
 						<option value="Low">Low</option>
 					</select>
 					<input
-						type="date"
+						type="datetime-local"
 						value={newTask.dueDate}
 						onChange={(e) =>
 							setNewTask({ ...newTask, dueDate: e.target.value })
@@ -216,7 +216,8 @@ export default function TasksPage() {
 													{task.priority}
 												</span>
 												<p className="text-sm text-gray-600 mt-1">
-													Due: {task.dueDate.toLocaleDateString()}
+													Due: {task.dueDate.toLocaleString()}{" "}
+													{/* Show Date & Time */}
 												</p>
 											</div>
 
