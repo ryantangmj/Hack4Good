@@ -28,7 +28,9 @@ export default function ArrangeMeetingPage() {
   const [isTimeModalOpen, setIsTimeModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [timeBlocks, setTimeBlocks] = useState<string[]>([]);
-  const [loggedInUserEmail, setLoggedInUserEmail] = useState<string | null>(null);
+  const [loggedInUserEmail, setLoggedInUserEmail] = useState<string | null>(
+    null
+  );
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -82,7 +84,9 @@ export default function ArrangeMeetingPage() {
   const removeParticipant = (email: string) => {
     setMeetingDetails((prev) => ({
       ...prev,
-      participants: prev.participants.filter((participant) => participant !== email),
+      participants: prev.participants.filter(
+        (participant) => participant !== email
+      ),
     }));
   };
 
@@ -97,7 +101,8 @@ export default function ArrangeMeetingPage() {
     setSelectedDate(date);
     const formattedDate = format(date, "yyyy-MM-dd");
     setTimeBlocks(
-      meetingDetails.availabilities[loggedInUserEmail || ""]?.[formattedDate] || []
+      meetingDetails.availabilities[loggedInUserEmail || ""]?.[formattedDate] ||
+        []
     );
     setIsTimeModalOpen(true);
   };
@@ -127,7 +132,10 @@ export default function ArrangeMeetingPage() {
   };
 
   const savePendingMeeting = async () => {
-    if (!meetingDetails.title || Object.keys(meetingDetails.availabilities).length === 0) {
+    if (
+      !meetingDetails.title ||
+      Object.keys(meetingDetails.availabilities).length === 0
+    ) {
       alert("Please fill all required fields!");
       return;
     }
@@ -158,7 +166,9 @@ export default function ArrangeMeetingPage() {
 
   return (
     <div className="p-8">
-      <h1 className="text-2xl font-bold text-gray-900 mb-4">🗓️ Arrange Meeting</h1>
+      <h1 className="text-2xl font-bold text-gray-900 mb-4">
+        🗓️ Arrange Meeting
+      </h1>
       <div className="grid grid-cols-1 gap-4">
         <input
           type="text"
@@ -176,9 +186,9 @@ export default function ArrangeMeetingPage() {
           className="w-full border px-3 py-2 rounded-md"
         />
       </div>
-      <div className="mt-6">
+      <div className="mt-2">
         <h2 className="text-lg font-semibold text-gray-900">Participants</h2>
-        <ul className="flex flex-wrap gap-2 mt-2">
+        <ul className="flex flex-wrap gap-2 mt-1">
           {meetingDetails.participants.map((email) => (
             <li
               key={email}
@@ -195,7 +205,7 @@ export default function ArrangeMeetingPage() {
           ))}
         </ul>
       </div>
-      <div className="mt-6">
+      <div className="mt-2">
         <input
           type="text"
           placeholder="Type participant's email"
@@ -216,7 +226,9 @@ export default function ArrangeMeetingPage() {
         </ul>
       </div>
       <div className="mt-6">
-        <h2 className="text-lg font-semibold text-gray-900">Select Available Dates</h2>
+        <h2 className="text-lg font-semibold text-gray-900">
+          Select Available Dates
+        </h2>
         <DatePicker
           inline
           selected={null}
@@ -241,21 +253,22 @@ export default function ArrangeMeetingPage() {
               Select Time Blocks for {format(selectedDate, "yyyy-MM-dd")}
             </h2>
             <div className="grid grid-cols-3 gap-2">
-              {Array.from({ length: 9 }, (_, i) => `${9 + i}:00 - ${10 + i}:00`).map(
-                (block) => (
-                  <button
-                    key={block}
-                    className={`px-2 py-1 rounded-md ${
-                      timeBlocks.includes(block)
-                        ? "bg-blue-500 text-white"
-                        : "bg-gray-200 text-gray-700"
-                    }`}
-                    onClick={() => toggleTimeBlock(block)}
-                  >
-                    {block}
-                  </button>
-                )
-              )}
+              {Array.from(
+                { length: 9 },
+                (_, i) => `${9 + i}:00 - ${10 + i}:00`
+              ).map((block) => (
+                <button
+                  key={block}
+                  className={`px-2 py-1 rounded-md ${
+                    timeBlocks.includes(block)
+                      ? "bg-blue-500 text-white"
+                      : "bg-gray-200 text-gray-700"
+                  }`}
+                  onClick={() => toggleTimeBlock(block)}
+                >
+                  {block}
+                </button>
+              ))}
             </div>
             <div className="flex justify-end space-x-2 mt-4">
               <button

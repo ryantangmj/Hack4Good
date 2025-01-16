@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { db, auth } from "../../firebaseConfig";
+import { db } from "../../firebaseConfig";
+import { firestore } from "../../utils/firebase.mjs";
 import {
   collection,
   addDoc,
@@ -13,9 +14,8 @@ import {
   where,
 } from "firebase/firestore";
 import { useRouter } from "next/navigation";
-import { onAuthStateChanged } from "firebase/auth";
+import { useAuth } from "@/utils/AuthContext";
 
-// Define types for the data coming from Firestore
 interface Meeting {
   id: string;
   title: string;
@@ -23,57 +23,137 @@ interface Meeting {
   participants: string[];
   agenda: string;
   userId: string;
+  isOrganizer?: boolean;
+}
+
+interface User {
+  id: string;
+  email: string;
+  name: string;
 }
 
 export default function MeetingsPage() {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editMeetingId, setEditMeetingId] = useState<string | null>(null);
-  const [user, setUser] = useState<any>(null); // Type for user can be improved
+  const [users, setUsers] = useState<User[]>([]);
+  const [searchEmail, setSearchEmail] = useState("");
+  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const [newMeeting, setNewMeeting] = useState({
     title: "",
     time: "",
-    participants: "",
+    participants: [] as string[],
     agenda: "",
   });
   const [loading, setLoading] = useState(false);
-  const [userName, setUserName] = useState<string>("");
 
-  // 🔍 Function to fetch user-specific meetings
-  const fetchMeetings = async (uid: string) => {
+  const fetchMeetings = async () => {
     try {
-      setLoading(true);
+      if (!user?.uid || !user?.email) return;
+
       const meetingsRef = collection(db, "meetings");
-      const q = query(meetingsRef, where("userId", "==", uid));
-      const snapshot = await getDocs(q);
-      const meetingsList = snapshot.docs.map((doc) => ({
+
+      // Get meetings where user is organizer or participant
+      const [organizerSnapshot, participantSnapshot] = await Promise.all([
+        getDocs(query(meetingsRef, where("userId", "==", user.uid))),
+        getDocs(
+          query(
+            meetingsRef,
+            where("participants", "array-contains", user.email)
+          )
+        ),
+      ]);
+
+      const organizerMeetings = organizerSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
-      })) as Meeting[]; // Type assertion for Meeting[]
-      setMeetings(meetingsList);
+        isOrganizer: true,
+      }));
+
+      const participantMeetings = participantSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        isOrganizer: false,
+      }));
+
+      // Combine and sort meetings by date
+      const allMeetings = [...organizerMeetings, ...participantMeetings]
+        .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+        // Filter out past meetings
+        .filter((meeting) => new Date(meeting.time) >= new Date());
+
+      setMeetings(allMeetings);
     } catch (error) {
       console.error("Error fetching meetings:", error);
-      alert("Error loading meetings. Check Firestore setup.");
-    } finally {
-      setLoading(false);
     }
   };
 
-  // 🔒 Check if user is authenticated & load their meetings
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (!user) {
-        router.push("/auth"); // Redirect to login if not authenticated
-      } else {
-        setUser(user);
-        setUserName(user.displayName || user.email || "Anonymous"); // Default to "Anonymous" if both are null/undefined
-        fetchMeetings(user.uid);
-      }
-    });
+  const addParticipant = (user: User) => {
+    if (!newMeeting.participants.includes(user.email)) {
+      setNewMeeting((prev) => ({
+        ...prev,
+        participants: [...prev.participants, user.email],
+      }));
+    }
+    setSearchEmail("");
+    setFilteredUsers([]);
+  };
 
-    return () => unsubscribe();
+  const removeParticipant = (email: string) => {
+    setNewMeeting((prev) => ({
+      ...prev,
+      participants: prev.participants.filter(
+        (participant) => participant !== email
+      ),
+    }));
+  };
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/auth");
+    } else if (user) {
+      fetchMeetings(user.uid);
+    }
+  }, [user, authLoading]);
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(firestore, "users"));
+        const usersArray = querySnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as User[];
+        setUsers(usersArray);
+      } catch (error) {
+        console.error("Error fetching users: ", error);
+      }
+    };
+
+    fetchUsers();
   }, []);
+
+  useEffect(() => {
+    if (searchEmail) {
+      setFilteredUsers(
+        users.filter((user) =>
+          user.email.toLowerCase().includes(searchEmail.toLowerCase())
+        )
+      );
+    } else {
+      setFilteredUsers([]);
+    }
+  }, [searchEmail, users]);
+
+  useEffect(() => {
+    if (isModalOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "auto";
+    }
+  }, [isModalOpen]);
 
   // Handle input changes
   const handleChange = (
@@ -103,7 +183,7 @@ export default function MeetingsPage() {
         await updateDoc(meetingDoc, {
           title: newMeeting.title,
           time: newMeeting.time,
-          participants: newMeeting.participants.split(",").map((p) => p.trim()),
+          participants: newMeeting.participants,
           agenda: newMeeting.agenda,
         });
       } else {
@@ -111,14 +191,19 @@ export default function MeetingsPage() {
         await addDoc(meetingsRef, {
           title: newMeeting.title,
           time: newMeeting.time,
-          participants: newMeeting.participants.split(",").map((p) => p.trim()),
+          participants: newMeeting.participants,
           agenda: newMeeting.agenda,
           userId: user.uid, // 🔒 Store meeting under logged-in user
         });
       }
 
       setIsModalOpen(false);
-      setNewMeeting({ title: "", time: "", participants: "", agenda: "" });
+      setNewMeeting({
+        title: "",
+        time: "",
+        participants: [] as string[],
+        agenda: "",
+      });
       setEditMeetingId(null);
       fetchMeetings(user.uid);
     } catch (error) {
@@ -134,7 +219,7 @@ export default function MeetingsPage() {
     setNewMeeting({
       title: meeting.title,
       time: meeting.time,
-      participants: meeting.participants.join(", "),
+      participants: meeting.participants,
       agenda: meeting.agenda,
     });
     setEditMeetingId(meeting.id);
@@ -231,7 +316,7 @@ export default function MeetingsPage() {
       {/* Meeting Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white p-6 rounded-lg shadow-lg w-96">
+          <div className="bg-white p-6 rounded-lg shadow-lg w-96 max-h-[80vh] overflow-y-auto">
             <h2 className="text-xl font-semibold mb-4">
               {editMeetingId ? "Edit Meeting" : "Add Meeting"}
             </h2>
@@ -255,8 +340,44 @@ export default function MeetingsPage() {
               placeholder="Agenda"
               value={newMeeting.agenda}
               onChange={handleChange}
-              className="w-full border px-3 py-2 mb-2 rounded-md"
+              className="w-full border px-3 py-2 rounded-md"
             />
+            <ul className="flex flex-wrap">
+              {newMeeting.participants.map((email) => (
+                <li
+                  key={email}
+                  className="px-3 py-1 bg-blue-500 text-white rounded-full flex items-center space-x-2"
+                >
+                  <span>{email}</span>
+                  <button
+                    onClick={() => removeParticipant(email)}
+                    className="text-white hover:text-gray-300"
+                  >
+                    ✕
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div>
+              <input
+                type="text"
+                placeholder="Type participant's email"
+                value={searchEmail}
+                onChange={(e) => setSearchEmail(e.target.value)}
+                className="w-full border px-3 py-2 rounded-md mt-2"
+              />
+              <ul className="border mt-2 rounded-md max-h-40 overflow-y-auto">
+                {filteredUsers.map((user) => (
+                  <li
+                    key={user.id}
+                    className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                    onClick={() => addParticipant(user)}
+                  >
+                    {user.email} - {user.name}
+                  </li>
+                ))}
+              </ul>
+            </div>
             <div className="flex justify-end space-x-2 mt-4">
               <button
                 className="px-4 py-2 bg-gray-300 rounded-md"
