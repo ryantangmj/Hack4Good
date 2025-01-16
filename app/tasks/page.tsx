@@ -1,87 +1,218 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import AuthGuard from "../../components/AuthGuard";
+import { db, auth } from "../../firebaseConfig";
+import {
+	collection,
+	addDoc,
+	getDocs,
+	updateDoc,
+	doc,
+	where,
+	query,
+} from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 
+interface Task {
+	id: string;
+	title: string;
+	priority: string;
+	completed: boolean;
+	dueDate: string; // Added due date field
+	userId: string;
+}
 
 export default function TasksPage() {
-	const [tasks, setTasks] = useState([
-		{
-			id: 1,
-			title: "Prepare Quarterly Report",
-			priority: "High",
-			completed: false,
-		},
-		{
-			id: 2,
-			title: "Email Client Updates",
-			priority: "Medium",
-			completed: false,
-		},
-		{ id: 3, title: "Schedule Team Meeting", priority: "Low", completed: true },
-	]);
+	const [tasks, setTasks] = useState<Task[]>([]);
+	const [newTask, setNewTask] = useState({
+		title: "",
+		priority: "Medium",
+		dueDate: "",
+	});
+	const [loading, setLoading] = useState(false);
+	const [user, setUser] = useState<any>(null);
 
-	// Toggle task completion
-	const toggleTaskCompletion = (taskId: number) => {
-		setTasks(
-			tasks.map((task) =>
-				task.id === taskId ? { ...task, completed: !task.completed } : task
-			)
-		);
+	// Fetch tasks from Firestore
+	const fetchTasks = async (uid: string) => {
+		try {
+			setLoading(true);
+			const tasksRef = collection(db, "tasks");
+			const q = query(tasksRef, where("userId", "==", uid));
+			const snapshot = await getDocs(q);
+			const tasksList = snapshot.docs.map((doc) => ({
+				id: doc.id,
+				...doc.data(),
+			})) as Task[];
+			setTasks(tasksList);
+		} catch (error) {
+			console.error("Error fetching tasks:", error);
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	// Monitor authentication state
+	useEffect(() => {
+		const unsubscribe = onAuthStateChanged(auth, (user) => {
+			if (user) {
+				setUser(user);
+				fetchTasks(user.uid);
+			}
+		});
+		return () => unsubscribe();
+	}, []);
+
+	// Toggle task completion and update Firestore
+	const toggleTaskCompletion = async (taskId: string) => {
+		try {
+			const task = tasks.find((t) => t.id === taskId);
+			if (!task) return;
+
+			const taskRef = doc(db, "tasks", taskId);
+			await updateDoc(taskRef, { completed: !task.completed });
+
+			setTasks((prev) =>
+				prev.map((t) =>
+					t.id === taskId ? { ...t, completed: !t.completed } : t
+				)
+			);
+		} catch (error) {
+			console.error("Error updating task:", error);
+		}
+	};
+
+	// Handle adding a new task
+	const addTask = async () => {
+		if (!newTask.title.trim() || !newTask.dueDate.trim()) {
+			alert("Task title and due date cannot be empty.");
+			return;
+		}
+		if (!user) {
+			alert("You must be logged in to add a task.");
+			return;
+		}
+
+		try {
+			const taskRef = collection(db, "tasks");
+			const docRef = await addDoc(taskRef, {
+				title: newTask.title,
+				priority: newTask.priority,
+				completed: false,
+				dueDate: newTask.dueDate,
+				userId: user.uid,
+			});
+
+			setTasks((prev) => [
+				...prev,
+				{ id: docRef.id, ...newTask, completed: false, userId: user.uid },
+			]);
+			setNewTask({ title: "", priority: "Medium", dueDate: "" });
+		} catch (error) {
+			console.error("Error adding task:", error);
+		}
 	};
 
 	return (
-        <AuthGuard>
-            <div className="p-8">
-                <h1 className="text-2xl font-bold text-gray-900 mb-4">✅ Tasks</h1>
+		<AuthGuard>
+			<div className="p-8">
+				<h1 className="text-2xl font-bold text-gray-900 mb-4">✅ Tasks</h1>
 
-                <div className="space-y-4">
-                    {tasks.map((task) => (
-                        <div
-                            key={task.id}
-                            className={`p-4 rounded-lg shadow-md ${
-                                task.completed ? "bg-gray-200" : "bg-white"
-                            }`}
-                        >
-                            <div className="flex justify-between items-center">
-                                <div>
-                                    <h2
-                                        className={`text-lg font-semibold ${
-                                            task.completed
-                                                ? "line-through text-gray-500"
-                                                : "text-gray-900"
-                                        }`}
-                                    >
-                                        {task.title}
-                                    </h2>
-                                    <span
-                                        className={`px-2 py-1 rounded-md text-xs ${
-                                            task.priority === "High"
-                                                ? "bg-red-100 text-red-600"
-                                                : task.priority === "Medium"
-                                                ? "bg-yellow-100 text-yellow-600"
-                                                : "bg-green-100 text-green-600"
-                                        }`}
-                                    >
-                                        {task.priority}
-                                    </span>
-                                </div>
+				{/* Task Input */}
+				<div className="mb-4 flex space-x-2">
+					<input
+						type="text"
+						placeholder="New Task"
+						value={newTask.title}
+						onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+						className="border px-3 py-2 rounded-md w-full"
+					/>
+					<select
+						value={newTask.priority}
+						onChange={(e) =>
+							setNewTask({ ...newTask, priority: e.target.value })
+						}
+						className="border px-3 py-2 rounded-md"
+					>
+						<option value="High">High</option>
+						<option value="Medium">Medium</option>
+						<option value="Low">Low</option>
+					</select>
+					<input
+						type="date"
+						value={newTask.dueDate}
+						onChange={(e) =>
+							setNewTask({ ...newTask, dueDate: e.target.value })
+						}
+						className="border px-3 py-2 rounded-md"
+					/>
+					<button
+						onClick={addTask}
+						className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+					>
+						Add
+					</button>
+				</div>
 
-                                <button
-                                    className={`px-3 py-1 rounded-md ${
-                                        task.completed
-                                            ? "bg-gray-500 text-white"
-                                            : "bg-blue-500 text-white"
-                                    }`}
-                                    onClick={() => toggleTaskCompletion(task.id)}
-                                >
-                                    {task.completed ? "Undo" : "Complete"}
-                                </button>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        </AuthGuard>
+				{/* Task List */}
+				{loading ? (
+					<p className="text-gray-600">Loading tasks...</p>
+				) : (
+					<div className="space-y-4">
+						{tasks.length === 0 ? (
+							<p className="text-gray-500">No tasks found.</p>
+						) : (
+							tasks.map((task) => (
+								<div
+									key={task.id}
+									className={`p-4 rounded-lg shadow-md ${
+										task.completed ? "bg-gray-200" : "bg-white"
+									}`}
+								>
+									<div className="flex justify-between items-center">
+										<div>
+											<h2
+												className={`text-lg font-semibold ${
+													task.completed
+														? "line-through text-gray-500"
+														: "text-gray-900"
+												}`}
+											>
+												{task.title}
+											</h2>
+											<span
+												className={`px-2 py-1 rounded-md text-xs ${
+													task.priority === "High"
+														? "bg-red-100 text-red-600"
+														: task.priority === "Medium"
+														? "bg-yellow-100 text-yellow-600"
+														: "bg-green-100 text-green-600"
+												}`}
+											>
+												{task.priority}
+											</span>
+											<p className="text-sm text-gray-600 mt-1">
+												Due: {new Date(task.dueDate).toLocaleDateString()}
+											</p>
+										</div>
+
+										<button
+											className={`px-3 py-1 rounded-md ${
+												task.completed
+													? "bg-gray-500 text-white"
+													: "bg-blue-500 text-white"
+											}`}
+											onClick={() => toggleTaskCompletion(task.id)}
+										>
+											{task.completed ? "Undo" : "Complete"}
+										</button>
+									</div>
+								</div>
+							))
+						)}
+					</div>
+				)}
+			</div>
+		</AuthGuard>
 	);
 }

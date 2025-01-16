@@ -30,17 +30,19 @@ export default function MeetingsPage() {
 	const [meetings, setMeetings] = useState<Meeting[]>([]);
 	const [isModalOpen, setIsModalOpen] = useState(false);
 	const [editMeetingId, setEditMeetingId] = useState<string | null>(null);
-	const [user, setUser] = useState<any>(null); // Type for user can be improved
+	const [user, setUser] = useState<any>(null);
+	const [loading, setLoading] = useState(false);
+	const [userName, setUserName] = useState<string>("");
+
+	// State for new/editing meetings
 	const [newMeeting, setNewMeeting] = useState({
 		title: "",
 		time: "",
 		participants: "",
 		agenda: "",
 	});
-	const [loading, setLoading] = useState(false);
-	const [userName, setUserName] = useState<string>("");
 
-	// 🔍 Function to fetch user-specific meetings
+	// Fetch user-specific meetings from Firestore
 	const fetchMeetings = async (uid: string) => {
 		try {
 			setLoading(true);
@@ -50,7 +52,7 @@ export default function MeetingsPage() {
 			const meetingsList = snapshot.docs.map((doc) => ({
 				id: doc.id,
 				...doc.data(),
-			})) as Meeting[]; // Type assertion for Meeting[]
+			})) as Meeting[];
 			setMeetings(meetingsList);
 		} catch (error) {
 			console.error("Error fetching meetings:", error);
@@ -60,33 +62,31 @@ export default function MeetingsPage() {
 		}
 	};
 
-	// 🔒 Check if user is authenticated & load their meetings
+	// Check authentication & load meetings
 	useEffect(() => {
 		const unsubscribe = onAuthStateChanged(auth, (user) => {
 			if (!user) {
-				router.push("/auth"); // Redirect to login if not authenticated
+				router.push("/auth");
 			} else {
 				setUser(user);
-				setUserName(user.displayName || user.email || "Anonymous"); // Default to "Anonymous" if both are null/undefined
+				setUserName(user.displayName || user.email || "Anonymous");
 				fetchMeetings(user.uid);
 			}
 		});
-
 		return () => unsubscribe();
 	}, []);
 
-
-	// Handle input changes
+	// Handle form inputs
 	const handleChange = (
 		e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
 	) => {
 		setNewMeeting({ ...newMeeting, [e.target.name]: e.target.value });
 	};
 
-	// 📝 Save (Add or Edit) a Meeting
+	// Save meeting (add/edit)
 	const saveMeeting = async () => {
-		if (!newMeeting.title || !newMeeting.time) {
-			alert("Fill all fields!");
+		if (!newMeeting.title || !newMeeting.time || !newMeeting.participants) {
+			alert("Please fill all fields!");
 			return;
 		}
 		if (!user) {
@@ -114,10 +114,11 @@ export default function MeetingsPage() {
 					time: newMeeting.time,
 					participants: newMeeting.participants.split(",").map((p) => p.trim()),
 					agenda: newMeeting.agenda,
-					userId: user.uid, // 🔒 Store meeting under logged-in user
+					userId: user.uid,
 				});
 			}
 
+			// Reset modal & refresh meetings
 			setIsModalOpen(false);
 			setNewMeeting({ title: "", time: "", participants: "", agenda: "" });
 			setEditMeetingId(null);
@@ -130,7 +131,7 @@ export default function MeetingsPage() {
 		}
 	};
 
-	// ✏️ Open edit modal
+	// Open edit modal
 	const openEditModal = (meeting: Meeting) => {
 		setNewMeeting({
 			title: meeting.title,
@@ -142,10 +143,9 @@ export default function MeetingsPage() {
 		setIsModalOpen(true);
 	};
 
-	// 🗑️ Delete meeting from Firestore
+	// Delete meeting
 	const deleteMeeting = async (meetingId: string) => {
 		if (!confirm("Are you sure you want to delete this meeting?")) return;
-
 		try {
 			await deleteDoc(doc(db, "meetings", meetingId));
 			fetchMeetings(user.uid);
@@ -157,10 +157,8 @@ export default function MeetingsPage() {
 
 	return (
 		<div className="p-8">
-			{/* Header */}
 			<h1 className="text-2xl font-bold text-gray-900 mb-4">📅 My Meetings</h1>
 
-			{/* Add Meeting Button */}
 			<button
 				className="mb-4 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition"
 				onClick={() => {
@@ -185,16 +183,13 @@ export default function MeetingsPage() {
 								className="bg-white p-6 rounded-xl shadow-md transition hover:shadow-lg"
 							>
 								<h2 className="text-lg font-semibold text-gray-900 flex justify-between">
-									{meeting.title}{" "}
+									{meeting.title}
 									<span className="text-gray-500 text-sm">
 										{new Date(meeting.time).toLocaleString()}
 									</span>
 								</h2>
 								<p className="text-gray-700 text-sm mt-1">
-									Participants:{" "}
-									{Array.isArray(meeting.participants)
-										? meeting.participants.join(", ")
-										: "TBA"}
+									Participants: {meeting.participants.join(", ")}
 								</p>
 								<p className="text-gray-700 text-sm mt-1">
 									Agenda: {meeting.agenda}
@@ -243,6 +238,14 @@ export default function MeetingsPage() {
 							onChange={handleChange}
 							className="w-full border px-3 py-2 mb-2 rounded-md"
 						/>
+						<input
+							type="text"
+							name="participants"
+							placeholder="Participants (comma-separated)"
+							value={newMeeting.participants}
+							onChange={handleChange}
+							className="w-full border px-3 py-2 mb-2 rounded-md"
+						/>
 						<textarea
 							name="agenda"
 							placeholder="Agenda"
@@ -261,7 +264,7 @@ export default function MeetingsPage() {
 								className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
 								onClick={saveMeeting}
 							>
-								{editMeetingId ? "Save Changes" : "Add Meeting"}
+								Save
 							</button>
 						</div>
 					</div>

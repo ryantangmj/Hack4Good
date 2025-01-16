@@ -66,7 +66,7 @@ export default function AuthPage() {
 				// Sign In
 				await signInWithEmailAndPassword(auth, email, password);
 			}
-			router.push("/meetings"); // Redirect after authentication
+			router.push("/"); // Redirect after authentication
 		} catch (error) {
 			console.error("Authentication Error:", error);
 			alert("Authentication Failed. Check your credentials.");
