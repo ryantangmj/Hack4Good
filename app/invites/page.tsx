@@ -16,14 +16,15 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../../utils/firebase.mjs";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import { format } from "date-fns";
 
 interface PendingMeeting {
   id: string;
   title: string;
   agenda: string;
-  organiser: string; // Store only the organiser's email
-  participants: string[]; // Array of participant emails
-  availabilities: Record<string, Record<string, string[]>>; // Email → Date → Time Blocks
+  organiser: string;
+  participants: string[];
+  availabilities: Record<string, Record<string, string[]>>;
   pendingResponse: number;
 }
 
@@ -71,6 +72,7 @@ export default function InvitesPage() {
 
   const handleAcceptMeeting = (meeting: PendingMeeting) => {
     setCurrentMeeting(meeting);
+    setAvailabilities({}); // Reset availabilities when accepting a new meeting
     setIsCalendarModalOpen(true);
   };
 
@@ -96,26 +98,24 @@ export default function InvitesPage() {
   };
 
   const handleDateClick = (date: Date) => {
-    const formattedDate = date.toISOString().split("T")[0];
     setSelectedDate(date);
+    const formattedDate = format(date, "yyyy-MM-dd"); // Use date-fns for consistent formatting
     setTimeBlocks(availabilities[formattedDate] || []);
     setIsCalendarModalOpen(false);
     setIsTimeModalOpen(true);
   };
-
+  
   const saveTimeBlocks = () => {
     if (!selectedDate) return;
-
-    const formattedDate = selectedDate.toISOString().split("T")[0];
+    const formattedDate = format(selectedDate, "yyyy-MM-dd"); // Use date-fns for consistent formatting
     setAvailabilities((prev) => ({
       ...prev,
       [formattedDate]: timeBlocks,
     }));
-
-    setSelectedDate(null);
+  
     setTimeBlocks([]);
     setIsTimeModalOpen(false);
-    setIsCalendarModalOpen(true); // Allow selecting another date
+    setIsCalendarModalOpen(true);
   };
 
   const finalizeAvailability = async () => {
@@ -126,13 +126,18 @@ export default function InvitesPage() {
         ...currentMeeting.availabilities,
         [userEmail]: availabilities,
       };
+
       const updatedPendingResponse = currentMeeting.pendingResponse - 1;
 
       if (updatedPendingResponse === 0) {
         const matchingTimeBlock = findMatchingTimeBlock(updatedAvailabilities);
+
         if (matchingTimeBlock) {
           await createMeeting(currentMeeting, matchingTimeBlock);
+        } else {
+          alert("No matching date and time block found. Meeting cannot be scheduled.");
         }
+
         await deleteDoc(doc(firestore, "pendingmeetings", currentMeeting.id));
       } else {
         await updateDoc(doc(firestore, "pendingmeetings", currentMeeting.id), {
@@ -193,10 +198,9 @@ export default function InvitesPage() {
       const meetingData = {
         title: pendingMeeting.title,
         agenda: pendingMeeting.agenda,
-        organiser: pendingMeeting.organiser,
         participants: [...pendingMeeting.participants, pendingMeeting.organiser],
-        date: matchingTimeBlock.date,
-        time: matchingTimeBlock.time,
+        time: `${matchingTimeBlock.date}T${matchingTimeBlock.time.slice(0, 5)}`,
+        userId: pendingMeeting.organiser,
       };
 
       await addDoc(collection(firestore, "meetings"), meetingData);
@@ -205,6 +209,12 @@ export default function InvitesPage() {
       console.error("Error creating meeting:", error);
       alert("Failed to schedule meeting.");
     }
+  };
+
+  // Custom day class name function for DatePicker
+  const getDayClassName = (date: Date) => {
+    const formattedDate = format(date, "yyyy-MM-dd"); // Use local time zone
+    return availabilities[formattedDate]?.length > 0 ? "bg-green-500 text-white rounded-full" : "";
   };
 
   return (
@@ -239,28 +249,44 @@ export default function InvitesPage() {
       ) : (
         <p className="text-gray-700 text-sm">No pending meetings available.</p>
       )}
-
-      {isCalendarModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white p-6 rounded-lg shadow-lg w-96">
-            <h2 className="text-xl font-semibold mb-4">Select Your Availability Dates</h2>
-            <DatePicker inline selected={selectedDate} onChange={handleDateClick} />
-            <div className="flex justify-end space-x-2 mt-4">
-              <button
-                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
-                onClick={finalizeAvailability}
-              >
-                Save All Selections
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+{isCalendarModalOpen && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+    <div className="bg-white p-6 rounded-lg shadow-lg w-96">
+      <h2 className="text-xl font-semibold mb-4">Select Your Availability Dates</h2>
+      <DatePicker
+        inline
+        selected={selectedDate}
+        onChange={handleDateClick}
+        dayClassName={getDayClassName}
+      />
+      <div className="flex justify-end space-x-2 mt-4">
+        <button
+          className="px-4 py-2 bg-gray-300 text-black rounded-md hover:bg-gray-400"
+          onClick={() => {
+            setIsCalendarModalOpen(false); // Close modal
+            setCurrentMeeting(null); // Reset current meeting
+            setAvailabilities({}); // Reset availabilities
+          }}
+        >
+          Cancel
+        </button>
+        <button
+          className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+          onClick={finalizeAvailability}
+        >
+          Save All Selections
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
       {isTimeModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
           <div className="bg-white p-6 rounded-lg shadow-lg w-96">
-            <h2 className="text-xl font-semibold mb-4">Select Time Blocks</h2>
+            <h2 className="text-xl font-semibold mb-4">
+              Select Time Blocks for {selectedDate?.toLocaleDateString()}
+            </h2>
             <div className="grid grid-cols-3 gap-2">
               {Array.from({ length: 9 }, (_, i) => `${9 + i}:00 - ${10 + i}:00`).map(
                 (block) => (
@@ -281,9 +307,12 @@ export default function InvitesPage() {
             <div className="flex justify-end space-x-2 mt-4">
               <button
                 className="px-4 py-2 bg-gray-300 rounded-md"
-                onClick={() => setIsTimeModalOpen(false)}
+                onClick={() => {
+                  setIsTimeModalOpen(false);
+                  setIsCalendarModalOpen(true);
+                }}
               >
-                Cancel
+                Back
               </button>
               <button
                 className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
