@@ -1,11 +1,8 @@
+"use client";
+
 import "./globals.css";
 import Sidebar from "../components/Sidebar";
 import { AuthProvider } from "@/utils/AuthContext";
-
-export const metadata: Metadata = {
-  title: "Digital PA",
-  description: "A cost-effective digital PA system for administrators.",
-};
 import { useEffect, useState } from "react";
 import { auth } from "../firebaseConfig";
 import { onAuthStateChanged, signOut } from "firebase/auth";
