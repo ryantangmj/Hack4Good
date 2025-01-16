@@ -8,8 +8,9 @@ import { auth } from "../firebaseConfig";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { firestore } from "../utils/firebase.mjs";
 import { FaBell, FaUserCircle } from "react-icons/fa";
-import AuthGuard from "../components/AuthGuard";
 
 export default function RootLayout({
   children,
@@ -17,7 +18,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<any>(null);
+  const [userName, setUserName] = useState<string>(""); // State for user name
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [notifications, setNotifications] = useState([
@@ -25,21 +27,45 @@ export default function RootLayout({
     { id: 2, message: "✅ Task 'Quarterly Report' is due soon" },
   ]);
 
-  // Listen for authentication state changes
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    // Listen to authentication state changes
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
+
+      // If the user is logged in, fetch the user's name from Firestore
+      if (currentUser?.email) {
+        try {
+          const userQuery = query(
+            collection(firestore, "users"),
+            where("email", "==", currentUser.email)
+          );
+          const userSnapshot = await getDocs(userQuery);
+          if (!userSnapshot.empty) {
+            const userData = userSnapshot.docs[0].data();
+            setUserName(userData.name || "User");
+          } else {
+            setUserName("User");
+          }
+        } catch (error) {
+          console.error("Error fetching user name:", error);
+        }
+      } else {
+        setUserName(""); // Clear name if user is logged out
+      }
     });
+
     return () => unsubscribe();
   }, []);
 
-  // Handle logout
   const handleLogout = async () => {
-    await signOut(auth);
-    router.push("/auth"); // Redirect to login page
+    try {
+      await signOut(auth);
+      router.push("/auth"); // Redirect to login page
+    } catch (error) {
+      console.error("Sign-Out Error:", error);
+    }
   };
 
-  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
@@ -56,103 +82,82 @@ export default function RootLayout({
     <html lang="en">
       <body className="flex h-screen bg-gray-100">
         <AuthProvider>
-          {/* Sidebar */}
-          <Sidebar />
+          {user && <Sidebar />}
 
-          {/* Main Content */}
           <div className="flex-1 flex flex-col">
-            {/* Top Navbar */}
-            <header className="bg-white shadow-md px-6 py-4 flex justify-between items-center">
-              <h1 className="text-lg font-semibold">Digital PA</h1>
+            {user && (
+              <header className="bg-white shadow-md px-6 py-4 flex justify-between items-center">
+                <h1 className="text-lg font-semibold">Digital PA</h1>
 
-              {/* Right-side Icons: Notifications & Auth */}
-              <div className="flex items-center space-x-6">
-                {/* 🔔 Notifications Bell */}
-                <div className="relative dropdown">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setNotificationsOpen(!notificationsOpen);
-                      setProfileOpen(false); // Close profile dropdown
-                    }}
-                    className="relative text-gray-700"
-                  >
-                    <FaBell className="text-2xl" />
-                    {notifications.length > 0 && (
-                      <span className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full px-2">
-                        {notifications.length}
-                      </span>
-                    )}
-                  </button>
-
-                  {/* Dropdown Notification List */}
-                  {notificationsOpen && (
-                    <div className="absolute right-0 mt-3 w-72 bg-white shadow-lg rounded-lg p-4">
-                      <h3 className="text-gray-800 font-semibold mb-2">
-                        🔔 Notifications
-                      </h3>
-                      {notifications.length > 0 ? (
-                        <ul>
-                          {notifications.map((notif) => (
-                            <li
-                              key={notif.id}
-                              className="text-gray-700 text-sm py-2 border-b"
-                            >
-                              {notif.message}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-gray-600 text-sm">
-                          No new notifications
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* 👤 User Profile */}
-                <div className="relative dropdown">
-                  {user ? (
-                    <>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setProfileOpen(!profileOpen);
-                          setNotificationsOpen(false); // Close notifications dropdown
-                        }}
-                        className="flex items-center space-x-2"
-                      >
-                        <FaUserCircle className="text-2xl text-gray-700" />
-                        <span className="text-gray-700">
-                          {user.displayName || "User"}
+                <div className="flex items-center space-x-6">
+                  <div className="relative dropdown">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setNotificationsOpen(!notificationsOpen);
+                        setProfileOpen(false);
+                      }}
+                      className="relative text-gray-700"
+                    >
+                      <FaBell className="text-2xl" />
+                      {notifications.length > 0 && (
+                        <span className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full px-2">
+                          {notifications.length}
                         </span>
-                      </button>
-
-                      {/* Dropdown User Menu */}
-                      {profileOpen && (
-                        <div className="absolute right-0 mt-3 bg-white shadow-lg rounded-lg w-40">
-                          <button
-                            onClick={handleLogout}
-                            className="block px-4 py-2 text-red-600 hover:bg-gray-100 w-full text-left"
-                          >
-                            Logout
-                          </button>
-                        </div>
                       )}
-                    </>
-                  ) : (
-                    <Link href="/auth">
-                      <button className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">
-                        Login
-                      </button>
-                    </Link>
-                  )}
-                </div>
-              </div>
-            </header>
+                    </button>
+                    {notificationsOpen && (
+                      <div className="absolute right-0 mt-3 w-72 bg-white shadow-lg rounded-lg p-4">
+                        <h3 className="text-gray-800 font-semibold mb-2">
+                          🔔 Notifications
+                        </h3>
+                        {notifications.length > 0 ? (
+                          <ul>
+                            {notifications.map((notif) => (
+                              <li
+                                key={notif.id}
+                                className="text-gray-700 text-sm py-2 border-b"
+                              >
+                                {notif.message}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-gray-600 text-sm">
+                            No new notifications
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
 
-            {/* Page Content */}
+                  <div className="relative dropdown">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setProfileOpen(!profileOpen);
+                        setNotificationsOpen(false);
+                      }}
+                      className="flex items-center space-x-2"
+                    >
+                      <FaUserCircle className="text-2xl text-gray-700" />
+                      <span className="text-gray-700">{userName || "User"}</span>
+                    </button>
+                    {profileOpen && (
+                      <div className="absolute right-0 mt-3 bg-white shadow-lg rounded-lg w-40">
+                        <button
+                          onClick={handleLogout}
+                          className="block px-4 py-2 text-red-600 hover:bg-gray-100 w-full text-left"
+                        >
+                          Logout
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </header>
+            )}
+
             <main className="p-8">{children}</main>
           </div>
         </AuthProvider>
