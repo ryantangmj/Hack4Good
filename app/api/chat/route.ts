@@ -9,32 +9,45 @@ const anthropic = new Anthropic({
 
 const TODAY = format(new Date(), "yyyy-MM-dd'T'HH:mm");
 
-const SYSTEM_PROMPT = `You are a task management assistant. Keep responses brief and focused.
+const SYSTEM_PROMPT = `You are an AI assistant that helps manage tasks and meetings. Keep responses brief and focused.
 
 Today's date and time is ${TODAY}.
 
-For task creation:
-1. Extract title, priority (High/Medium/Low), and due date/time
-2. Convert relative dates and times to YYYY-MM-DDTHH:mm format (24-hour format)
-3. Examples of date/time handling:
-   - "tomorrow at 3pm" → "${format(set(addDays(new Date(), 1), { hours: 15, minutes: 0 }), "yyyy-MM-dd'T'HH:mm")}"
-   - "next Friday at 2:30 pm" → Convert to appropriate YYYY-MM-DDTHH:mm
-   - If no specific time is mentioned, use 23:59 as the default time
+You can:
+1. Create tasks with priority and due date/time
+2. Schedule meetings with title, time, participants, and agenda
 
-4. Respond in this exact format:
-
-Brief confirmation message
+For tasks, respond with:
 __JSON_DATA__
 {
   "action": "create_task",
   "task": {
     "title": "task title",
-    "priority": "priority level",
-    "dueDate": "YYYY-MM-DDTHH:mm"  // Will be converted to Timestamp
+    "priority": "High/Medium/Low",
+    "dueDate": "YYYY-MM-DDTHH:mm"
   }
 }
 
-For other queries, provide short, helpful responses.`;
+For meetings, respond with:
+__JSON_DATA__
+{
+  "action": "create_meeting",
+  "meeting": {
+    "title": "meeting title",
+    "time": "YYYY-MM-DDTHH:mm",
+    "participants": ["name1", "name2"],
+    "agenda": "meeting agenda"
+  }
+}
+
+When interpreting dates/times:
+- Use 24-hour format (YYYY-MM-DDTHH:mm)
+- For "tomorrow at 3pm" → "${format(set(addDays(new Date(), 1), { hours: 15, minutes: 0 }), "yyyy-MM-dd'T'HH:mm")}"
+- If no specific time mentioned for tasks, use 23:59
+- Always include a time for meetings
+- Extract participant names from the message
+
+First respond conversationally explaining what you understood, then include the JSON block.`;
 
 export async function POST(request: Request) {
   try {
@@ -62,19 +75,24 @@ export async function POST(request: Request) {
       try {
         const conversationalPart = parts[0].trim();
         const jsonStr = parts[1].trim();
-        const taskData = JSON.parse(jsonStr);
+        const data = JSON.parse(jsonStr);
         
-        // Validate the datetime format
-        if (taskData.task?.dueDate) {
-          const parsedDate = parseISO(taskData.task.dueDate);
+        // Validate datetime format for both tasks and meetings
+        if (data.action === 'create_task' && data.task?.dueDate) {
+          const parsedDate = parseISO(data.task.dueDate);
           if (!isNaN(parsedDate.getTime())) {
-            taskData.task.dueDate = format(parsedDate, "yyyy-MM-dd'T'HH:mm");
+            data.task.dueDate = format(parsedDate, "yyyy-MM-dd'T'HH:mm");
+          }
+        } else if (data.action === 'create_meeting' && data.meeting?.time) {
+          const parsedDate = parseISO(data.meeting.time);
+          if (!isNaN(parsedDate.getTime())) {
+            data.meeting.time = format(parsedDate, "yyyy-MM-dd'T'HH:mm");
           }
         }
 
         return NextResponse.json({
           reply: conversationalPart,
-          taskData,
+          data,
           needsConfirmation: true
         });
       } catch (e) {
