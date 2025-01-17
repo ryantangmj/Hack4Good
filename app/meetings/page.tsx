@@ -72,11 +72,14 @@ export default function MeetingsPage() {
         isOrganizer: true,
       }));
 
-      const participantMeetings = participantSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        isOrganizer: false,
-      }));
+      const participantMeetings = participantSnapshot.docs
+        .map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          isOrganizer: false,
+        }))
+        // Filter out meetings where user is already the organizer
+        .filter(meeting => !organizerMeetings.some(orgMeeting => orgMeeting.id === meeting.id));
 
       // Combine and sort meetings by date
       const allMeetings = [...organizerMeetings, ...participantMeetings]
@@ -102,6 +105,9 @@ export default function MeetingsPage() {
   };
 
   const removeParticipant = (email: string) => {
+    // Don't allow removing the organizer's email
+    if (email === user?.email) return;
+    
     setNewMeeting((prev) => ({
       ...prev,
       participants: prev.participants.filter(
@@ -114,7 +120,7 @@ export default function MeetingsPage() {
     if (!authLoading && !user) {
       router.push("/auth");
     } else if (user) {
-      fetchMeetings(user.uid);
+      fetchMeetings();
     }
   }, [user, authLoading]);
 
@@ -150,19 +156,25 @@ export default function MeetingsPage() {
   useEffect(() => {
     if (isModalOpen) {
       document.body.style.overflow = "hidden";
+      
+      // Auto-add user's email to participants when opening modal for new meeting
+      if (!editMeetingId && user?.email && !newMeeting.participants.includes(user.email)) {
+        setNewMeeting(prev => ({
+          ...prev,
+          participants: [user.email, ...prev.participants],
+        }));
+      }
     } else {
       document.body.style.overflow = "auto";
     }
-  }, [isModalOpen]);
+  }, [isModalOpen, user?.email, editMeetingId]);
 
-  // Handle input changes
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     setNewMeeting({ ...newMeeting, [e.target.name]: e.target.value });
   };
 
-  // 📝 Save (Add or Edit) a Meeting
   const saveMeeting = async () => {
     if (!newMeeting.title || !newMeeting.time) {
       alert("Fill all fields!");
@@ -177,23 +189,24 @@ export default function MeetingsPage() {
       setLoading(true);
       const meetingsRef = collection(db, "meetings");
 
+      // Ensure user's email is in the participants list
+      const participants = new Set([user.email, ...newMeeting.participants]);
+
       if (editMeetingId) {
-        // Edit existing meeting
         const meetingDoc = doc(db, "meetings", editMeetingId);
         await updateDoc(meetingDoc, {
           title: newMeeting.title,
           time: newMeeting.time,
-          participants: newMeeting.participants,
+          participants: Array.from(participants),
           agenda: newMeeting.agenda,
         });
       } else {
-        // Add new meeting
         await addDoc(meetingsRef, {
           title: newMeeting.title,
           time: newMeeting.time,
-          participants: newMeeting.participants,
+          participants: Array.from(participants),
           agenda: newMeeting.agenda,
-          userId: user.uid, // 🔒 Store meeting under logged-in user
+          userId: user.uid,
         });
       }
 
@@ -201,11 +214,11 @@ export default function MeetingsPage() {
       setNewMeeting({
         title: "",
         time: "",
-        participants: [] as string[],
+        participants: [],
         agenda: "",
       });
       setEditMeetingId(null);
-      fetchMeetings(user.uid);
+      fetchMeetings();
     } catch (error) {
       console.error("Error saving meeting:", error);
       alert("Failed to save meeting. Check Firestore permissions.");
@@ -214,7 +227,6 @@ export default function MeetingsPage() {
     }
   };
 
-  // ✏️ Open edit modal
   const openEditModal = (meeting: Meeting) => {
     setNewMeeting({
       title: meeting.title,
@@ -226,19 +238,17 @@ export default function MeetingsPage() {
     setIsModalOpen(true);
   };
 
-  // 🗑️ Delete meeting from Firestore
   const deleteMeeting = async (meetingId: string) => {
     if (!confirm("Are you sure you want to delete this meeting?")) return;
 
     try {
       await deleteDoc(doc(db, "meetings", meetingId));
-      fetchMeetings(user.uid);
+      fetchMeetings();
     } catch (error) {
       console.error("Error deleting meeting:", error);
       alert("Error deleting meeting.");
     }
   };
-
   return (
     <div className="p-8">
       {/* Header */}
