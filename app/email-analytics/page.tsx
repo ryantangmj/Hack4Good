@@ -156,13 +156,11 @@ export default function EmailSystemPage() {
   };
 
   const handleSummarise = async (thread: Thread) => {
-    // Select the thread first
     setSelectedThread(thread);
     setIsSummarizing(true);
     setSummaryResult(null);
   
     try {
-      // Fetch messages for the selected thread
       const messagesQuery = query(
         collection(firestore, "threads", thread.id, "messages"),
         orderBy("timestamp", "asc")
@@ -174,10 +172,8 @@ export default function EmailSystemPage() {
           ...doc.data(),
         })) as Message[];
   
-        // Proceed with summarizing only after fetching messages
         setMessages(fetchedMessages);
   
-        // Perform the summary operation
         fetch("/api/summarize", {
           method: "POST",
           headers: {
@@ -198,7 +194,7 @@ export default function EmailSystemPage() {
           })
           .finally(() => {
             setIsSummarizing(false);
-            unsubscribeMessages(); // Clean up the message snapshot
+            unsubscribeMessages();
           });
       });
     } catch (error) {
