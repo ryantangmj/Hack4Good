@@ -10,6 +10,7 @@ import {
   addDoc,
   orderBy,
   Timestamp,
+  serverTimestamp,
 } from "firebase/firestore";
 import { auth, firestore } from "../../utils/firebase.mjs";
 import AuthGuard from "../../components/AuthGuard";
@@ -29,11 +30,15 @@ interface Message {
 }
 
 interface Task {
+  id: string;
   title: string;
   priority: string;
-  dueDate: string | null;
-  extracted_from: string;
+  completed: boolean;
+  dueDate: Date; // JavaScript Date object
+  userId: string;
+  participants: string[];
 }
+
 
 interface Meeting {
   title: string;
@@ -121,13 +126,26 @@ export default function EmailSystemPage() {
 
   const createTaskFromEmail = async (task: Task) => {
     try {
-      await addDoc(collection(firestore, "tasks"), {
+      // Convert the date string to a Firestore Timestamp
+      let dueDate = '';
+      if (task.dueDate) {
+        const date = new Date(task.dueDate);
+        if (!isNaN(date.getTime())) {
+          dueDate = date.toISOString().slice(0, 16); // Gets format "YYYY-MM-DDTHH:mm"
+        }
+      }
+  
+      const taskData = {
         title: task.title,
-        priority: task.priority,
+        priority: task.priority || "Medium",
         completed: false,
-        dueDate: task.dueDate ? Timestamp.fromDate(new Date(task.dueDate)) : null,
+        dueDate, // Store as Firestore Timestamp
         userId: auth.currentUser?.uid,
-      });
+        createdAt: serverTimestamp(),
+        participants: task.participants || []
+      };
+  
+      await addDoc(collection(firestore, "tasks"), taskData);
       
       setCreatedItems(prev => new Set(prev).add(`task-${task.title}`));
       showNotification('Task added successfully!', 'success');
@@ -182,6 +200,7 @@ export default function EmailSystemPage() {
           body: JSON.stringify({
             messages: fetchedMessages,
             subject: thread.subject,
+            participants: thread.participants // Include thread participants
           }),
         })
           .then((response) => response.json())
@@ -202,7 +221,7 @@ export default function EmailSystemPage() {
       showNotification('Failed to analyze email', 'error');
       setIsSummarizing(false);
     }
-  };  
+  };
 
   const sendMessage = async () => {
     if (!newMessage || !selectedThread) return;
@@ -339,7 +358,7 @@ export default function EmailSystemPage() {
                                 {task.dueDate && ` | Due: ${new Date(task.dueDate).toLocaleString()}`}
                               </p>
                               <p className="text-xs text-gray-400 mt-1">
-                                From: "{task.extracted_from}"
+                                For: {task.participants.join(", ")}
                               </p>
                             </div>
                             {createdItems.has(`task-${task.title}`) ? (
