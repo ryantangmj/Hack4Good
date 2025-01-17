@@ -260,96 +260,7 @@ export default function EmailSystemPage() {
         </div>
 
         <div className="bg-white p-6 rounded-lg shadow-lg">
-                      {summaryResult && (
-                <div className="mb-6 bg-gray-50 p-4 rounded-lg">
-                  <h3 className="font-semibold mb-2">Summary:</h3>
-                  <p className="text-gray-700 mb-4">{summaryResult.summary}</p>
-
-                  {summaryResult.tasks && summaryResult.tasks.length > 0 && (
-                    <div className="mb-4">
-                      <h4 className="font-semibold text-blue-600 mb-2">
-                        Identified Tasks:
-                      </h4>
-                      <div className="space-y-2">
-                        {summaryResult.tasks.map((task, index) => (
-                          <div
-                            key={index}
-                            className="flex items-center justify-between bg-white p-3 rounded border"
-                          >
-                            <div>
-                              <p className="font-medium">{task.title}</p>
-                              <p className="text-sm text-gray-500">
-                                Priority: {task.priority}
-                                {task.dueDate && ` | Due: ${new Date(task.dueDate).toLocaleString()}`}
-                              </p>
-                              <p className="text-xs text-gray-400 mt-1">
-                                From: "{task.extracted_from}"
-                              </p>
-                            </div>
-                            {createdItems.has(`task-${task.title}`) ? (
-                              <span className="px-3 py-1 bg-gray-200 text-gray-600 text-sm rounded-md">
-                                ✓ Added
-                              </span>
-                            ) : (
-                              <button
-                                onClick={() => createTaskFromEmail(task)}
-                                className="px-3 py-1 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600"
-                              >
-                                Create Task
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {summaryResult.meetings && summaryResult.meetings.length > 0 && (
-                    <div>
-                      <h4 className="font-semibold text-purple-600 mb-2">
-                        Suggested Meetings:
-                      </h4>
-                      <div className="space-y-2">
-                        {summaryResult.meetings.map((meeting, index) => (
-                          <div
-                            key={index}
-                            className="flex items-center justify-between bg-white p-3 rounded border"
-                          >
-                            <div>
-                              <p className="font-medium">{meeting.title}</p>
-                              <p className="text-sm text-gray-500">
-                                {meeting.time && `Time: ${new Date(meeting.time).toLocaleString()}`}
-                                {meeting.participants.length > 0 && 
-                                  ` | With: ${meeting.participants.join(", ")}`}
-                              </p>
-                              <p className="text-sm text-gray-600">
-                                Agenda: {meeting.agenda}
-                              </p>
-                              <p className="text-xs text-gray-400 mt-1">
-                                From: "{meeting.extracted_from}"
-                              </p>
-                            </div>
-                            {createdItems.has(`meeting-${meeting.title}`) ? (
-                              <span className="px-3 py-1 bg-gray-200 text-gray-600 text-sm rounded-md">
-                                ✓ Scheduled
-                              </span>
-                            ) : (
-                              <button
-                                onClick={() => createMeetingFromEmail(meeting)}
-                                className="px-3 py-1 bg-purple-500 text-white text-sm rounded-md hover:bg-purple-600"
-                              >
-                                Schedule
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            
-            {!selectedThread ? (
+          {!selectedThread ? (
             threads.length > 0 ? (
               <table className="w-full border-collapse">
                 <thead>
@@ -373,13 +284,13 @@ export default function EmailSystemPage() {
                         {thread.participants.join(", ")}
                       </td>
                       <td className="p-3">
-                      <button
-                        onClick={() => handleSummarise(thread)}
-                        className="px-3 py-1 bg-green-500 text-white rounded-md hover:bg-green-600"
-                        disabled={isSummarizing}
-                      >
-                        {isSummarizing ? "Analyzing..." : "Summarize"}
-                      </button>
+                        <button
+                          onClick={() => handleSummarise(thread)}
+                          className="px-3 py-1 bg-green-500 text-white rounded-md hover:bg-green-600"
+                          disabled={isSummarizing}
+                        >
+                          {isSummarizing ? "Analyzing..." : "Summarize"}
+                        </button>
                       </td>
                     </tr>
                   ))}
