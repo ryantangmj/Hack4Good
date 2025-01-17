@@ -1,3 +1,4 @@
+
 # Digital PA System
 
 A cost-effective digital Personal Assistant (PA) system designed to help administrators efficiently arrange and schedule meetings, automate tasks, send follow-up reminders, generate summaries of email threads, and more.
@@ -80,13 +81,13 @@ To set up the application locally:
 1. **Clone the Repository**:
 
    ```bash
-   git clone https://github.com/yourusername/digital-pa-system.git
+   git clone https://github.com/ryantangmj/Hack4Good.git
    ```
 
 2. **Navigate to the Project Directory**:
 
    ```bash
-   cd digital-pa-system
+   cd Hack4Good
    ```
 
 3. **Install Dependencies**:
