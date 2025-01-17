@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs, query, where, orderBy, onSnapshot } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 import { FaCalendarAlt, FaTasks, FaInbox, FaRobot } from "react-icons/fa";
 import Link from "next/link";
 import AuthGuard from "../components/AuthGuard";
 import { useAuth } from "@/utils/AuthContext";
 
-// Define types for the data coming from Firestore
 interface Meeting {
   id: string;
   title: string;
@@ -23,30 +22,31 @@ interface Task {
   priority: string;
   dueDate: string;
   status: string;
+  participants: string[];
 }
 
-interface Email {
+interface Thread {
   id: string;
   subject: string;
-  sender: string;
-  summary: string;
+  participants: string[];
 }
 
-interface Task {
-  id: string; // Document ID
-  Dependencies: string;
-  Title: string;
-  Due: string;
-  Priority: string;
+interface Message {
+  sender: string;
+  text: string;
+  timestamp: any;
+}
+
+interface EmailPreview extends Thread {
+  latestMessage?: Message;
 }
 
 export default function Dashboard() {
   const { user } = useAuth();
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [emails, setEmails] = useState<Email[]>([]);
+  const [emails, setEmails] = useState<EmailPreview[]>([]);
 
-  // Fetch meetings, tasks, and email summaries
   useEffect(() => {
     const fetchMeetings = async () => {
       try {
@@ -71,19 +71,20 @@ export default function Dashboard() {
           isOrganizer: true,
         }));
 
-        const participantMeetings = participantSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          isOrganizer: false,
-        }));
+        const participantMeetings = participantSnapshot.docs
+          .map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+            isOrganizer: false,
+          }))
+          // Filter out meetings where user is already the organizer
+          .filter(meeting => !organizerMeetings.some(orgMeeting => orgMeeting.id === meeting.id));
 
-        // Combine and sort meetings by date
+        // Combine and sort meetings by date, filter future meetings, and take top 3
         const allMeetings = [...organizerMeetings, ...participantMeetings]
-          .sort(
-            (a, b) => new Date(a.time).getTime() - new Date(b.time).getTime()
-          )
-          // Filter out past meetings
-          .filter((meeting) => new Date(meeting.time) >= new Date());
+          .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+          .filter((meeting) => new Date(meeting.time) >= new Date())
+          .slice(0, 3);
 
         setMeetings(allMeetings);
       } catch (error) {
@@ -92,34 +93,82 @@ export default function Dashboard() {
     };
 
     const fetchTasks = async () => {
-      const snapshot = await getDocs(collection(db, "tasks"));
-      setTasks(
-        snapshot.docs.map((doc) => ({
+      try {
+        if (!user?.email) return;
+
+        const tasksRef = collection(db, "tasks");
+        const snapshot = await getDocs(
+          query(tasksRef, where("participants", "array-contains", user.email))
+        );
+
+        const fetchedTasks = snapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
-        })) as Task[] // Type assertion for Task[]
-      );
+        })) as Task[];
+
+        const sortedTasks = fetchedTasks.sort(
+          (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+        );
+
+        setTasks(sortedTasks.slice(0, 3));
+      } catch (error) {
+        console.error("Error fetching tasks:", error);
+      }
     };
 
-    const fetchEmails = async () => {
-      const snapshot = await getDocs(collection(db, "emails"));
-      setEmails(
-        snapshot.docs.map((doc) => ({
+    const fetchEmails = () => {
+      if (!user?.email) return;
+
+      const threadsQuery = query(
+        collection(db, "threads"),
+        where("participants", "array-contains", user.email)
+      );
+
+      const unsubscribe = onSnapshot(threadsQuery, async (snapshot) => {
+        const threads = snapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
-        })) as Email[] // Type assertion for Email[]
-      );
+        })) as Thread[];
+
+        const threadPreviews = await Promise.all(
+          threads.map(async (thread) => {
+            const messagesQuery = query(
+              collection(db, "threads", thread.id, "messages"),
+              orderBy("timestamp", "desc")
+            );
+
+            const messagesSnapshot = await getDocs(messagesQuery);
+            const latestMessage = messagesSnapshot.docs[0]?.data() as Message | undefined;
+
+            return {
+              ...thread,
+              latestMessage,
+            };
+          })
+        );
+
+        const sortedThreads = threadPreviews
+          .filter(thread => thread.latestMessage) // Only include threads with messages
+          .sort((a, b) => 
+            b.latestMessage!.timestamp.seconds - a.latestMessage!.timestamp.seconds
+          )
+          .slice(0, 2); // Get only the latest 3 threads
+
+        setEmails(sortedThreads);
+      });
+
+      return () => unsubscribe();
     };
 
     fetchMeetings();
     fetchTasks();
     fetchEmails();
-  }, []);
+  }, [user?.uid, user?.email]);
 
   return (
     <AuthGuard>
-      <div className="p-8 grid grid-cols-2 gap-6">
-        {/* 🔹 Upcoming Meetings */}
+<div className="pt-0 pb-8 px-8 grid grid-cols-2 gap-6">       
+   {/* 🔹 Upcoming Meetings */}
         <div className="bg-white p-6 rounded-xl shadow-md">
           <h2 className="text-xl font-semibold text-gray-900 flex items-center">
             <FaCalendarAlt className="mr-2 text-blue-500" /> Upcoming Meetings
@@ -129,10 +178,9 @@ export default function Dashboard() {
               </span>
             </Link>
           </h2>
-
           <div className="mt-4 p-4 bg-gray-100 rounded-lg">
             {meetings.length > 0 ? (
-              meetings.slice(0, 2).map((meeting) => (
+              meetings.map((meeting) => (
                 <div key={meeting.id} className="mb-4">
                   <p className="font-bold text-gray-900">
                     {meeting.title}{" "}
@@ -142,9 +190,7 @@ export default function Dashboard() {
                   </p>
                   <p className="text-gray-700 text-sm">
                     Participants:{" "}
-                    {Array.isArray(meeting.participants)
-                      ? meeting.participants.join(", ")
-                      : "TBA"}
+                    {meeting.participants?.join(", ") || "TBA"}
                   </p>
                   <p className="text-gray-700 text-sm mt-1">
                     Agenda: {meeting.agenda}
@@ -167,10 +213,9 @@ export default function Dashboard() {
               </span>
             </Link>
           </h2>
-
           <div className="mt-4 p-4 bg-gray-100 rounded-lg">
             {tasks.length > 0 ? (
-              tasks.slice(0, 3).map((task) => (
+              tasks.map((task) => (
                 <div key={task.id} className="mb-3">
                   <p className="font-bold text-gray-900 flex items-center">
                     {task.title}
@@ -187,8 +232,7 @@ export default function Dashboard() {
                     </span>
                   </p>
                   <p className="text-gray-700 text-sm">
-                    Due: {new Date(task.dueDate).toLocaleDateString()} |{" "}
-                    {task.status}
+                    Due: {new Date(task.dueDate).toLocaleString()}
                   </p>
                 </div>
               ))
@@ -208,14 +252,20 @@ export default function Dashboard() {
               </span>
             </Link>
           </h2>
-
           <div className="mt-4 p-4 bg-gray-100 rounded-lg">
             {emails.length > 0 ? (
-              emails.slice(0, 3).map((email) => (
-                <div key={email.id} className="mb-3">
-                  <p className="font-bold text-gray-900">{email.subject}</p>
-                  <p className="text-gray-700 text-sm">From: {email.sender}</p>
-                  <p className="text-gray-700 text-sm mt-1">{email.summary}</p>
+              emails.map((thread) => (
+                <div key={thread.id} className="mb-3">
+                  <p className="font-bold text-gray-900">{thread.subject}</p>
+                  <p className="text-gray-700 text-sm">
+                    From: {thread.latestMessage?.sender}
+                  </p>
+                  <p className="text-gray-700 text-sm mt-1">
+                    {thread.latestMessage?.text}
+                  </p>
+                  <p className="text-gray-500 text-xs mt-1">
+                    {new Date(thread.latestMessage?.timestamp.seconds * 1000).toLocaleString()}
+                  </p>
                 </div>
               ))
             ) : (
@@ -234,7 +284,6 @@ export default function Dashboard() {
               </span>
             </Link>
           </h2>
-
           <div className="mt-4 p-4 bg-gray-100 rounded-lg">
             <p className="text-gray-700 text-sm">
               ✨ Tip: Your **Quarterly Report Review** task is still in
