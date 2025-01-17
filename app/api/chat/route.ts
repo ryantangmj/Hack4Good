@@ -1,4 +1,3 @@
-// app/api/chat/route.ts
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { format, addDays, parseISO, set } from 'date-fns';
@@ -24,7 +23,8 @@ __JSON_DATA__
   "task": {
     "title": "task title",
     "priority": "High/Medium/Low",
-    "dueDate": "YYYY-MM-DDTHH:mm"
+    "dueDate": "YYYY-MM-DDTHH:mm",
+    "participants": [] // Leave empty, will be filled with current user
   }
 }
 
@@ -35,17 +35,16 @@ __JSON_DATA__
   "meeting": {
     "title": "meeting title",
     "time": "YYYY-MM-DDTHH:mm",
-    "participants": ["name1", "name2"],
+    "participants": [],
     "agenda": "meeting agenda"
   }
 }
 
 When interpreting dates/times:
-- Use 24-hour format (YYYY-MM-DDTHH:mm)
+- Use exactly "YYYY-MM-DDTHH:mm" format (as used by datetime-local input)
 - For "tomorrow at 3pm" → "${format(set(addDays(new Date(), 1), { hours: 15, minutes: 0 }), "yyyy-MM-dd'T'HH:mm")}"
 - If no specific time mentioned for tasks, use 23:59
 - Always include a time for meetings
-- Extract participant names from the message
 
 First respond conversationally explaining what you understood, then include the JSON block.`;
 
@@ -77,16 +76,20 @@ export async function POST(request: Request) {
         const jsonStr = parts[1].trim();
         const data = JSON.parse(jsonStr);
         
-        // Validate datetime format for both tasks and meetings
+        // Ensure dates are in the correct format
         if (data.action === 'create_task' && data.task?.dueDate) {
-          const parsedDate = parseISO(data.task.dueDate);
-          if (!isNaN(parsedDate.getTime())) {
+          try {
+            const parsedDate = parseISO(data.task.dueDate);
             data.task.dueDate = format(parsedDate, "yyyy-MM-dd'T'HH:mm");
+          } catch (e) {
+            console.error('Error parsing task date:', e);
           }
         } else if (data.action === 'create_meeting' && data.meeting?.time) {
-          const parsedDate = parseISO(data.meeting.time);
-          if (!isNaN(parsedDate.getTime())) {
+          try {
+            const parsedDate = parseISO(data.meeting.time);
             data.meeting.time = format(parsedDate, "yyyy-MM-dd'T'HH:mm");
+          } catch (e) {
+            console.error('Error parsing meeting date:', e);
           }
         }
 

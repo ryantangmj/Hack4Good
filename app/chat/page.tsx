@@ -49,19 +49,20 @@ export default function ChatPage() {
   const createTask = async (taskData: TaskData) => {
     try {
       const taskRef = collection(db, "tasks");
-      const dueDate = new Date(taskData.task.dueDate);
       
       await addDoc(taskRef, {
         title: taskData.task.title,
         priority: taskData.task.priority,
         completed: false,
-        dueDate: Timestamp.fromDate(dueDate),
+        dueDate: taskData.task.dueDate, // Store as string in "YYYY-MM-DDTHH:mm" format
         userId: user.uid,
+        participants: [user.email], // Add current user as only participant
+        createdAt: Timestamp.now()
       });
-
+  
       setMessages(prev => [...prev, {
         role: "ai",
-        text: `✅ Task created successfully for ${format(dueDate, "MMM d, yyyy 'at' h:mm a")}!`
+        text: `✅ Task created successfully for ${format(new Date(taskData.task.dueDate), "MMM d, yyyy 'at' h:mm a")}!`
       }]);
     } catch (error) {
       console.error("Error creating task:", error);
